@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # سرویس دیتابیس
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=graphdb
+      - POSTGRES_USER=mhgh0st
+      - POSTGRES_PASSWORD=MHgh.982
+    ports:
+      - "5432:5432"
+
+  # سرویس جنگو (Backend)
+  backend:
+    build: ./backend
+    # command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DB_NAME=graphdb
+      - DB_USER=mhgh0st
+      - DB_PASSWORD=MHgh.982
+      - DB_HOST=db
+
+  # سرویس فرانت (Next.js)
+  frontend:
+    build: ./frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  
+      - /app/.next         
+    ports:
+      - "3000:3000"
+    environment:
+      - WATCHPACK_POLLING=true
+
+volumes:
+  postgres_data:

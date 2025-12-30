@@ -1,0 +1,20 @@
+.DS_Store
+.env
+
+# --- Docker & Database ---
+postgres_data/
+# init.sql  # (اگر دیتای دیتابیس فقط تستی است، این را هم نگذارید بهتر است)
+
+# --- Python / Backend ---
+backend/__pycache__/
+backend/*.pyc
+backend/.venv
+backend/venv
+backend/.pytest_cache
+
+# --- Node / Frontend ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.bun/
