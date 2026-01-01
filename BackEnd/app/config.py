@@ -1,0 +1,1 @@
+DATABASE_URL = "postgresql://mhgh0st:MHgh.982@db:5432/postgres"
