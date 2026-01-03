@@ -1,4 +1,5 @@
 import polars as pl
+import bisect
 from typing import List, Dict, Tuple, Optional
 
 

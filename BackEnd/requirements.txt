@@ -7,3 +7,5 @@ pyarrow                  # موتور پولارز (حفظ شود)
 numpy                    # محاسبات ریاضی (حفظ شود)
 psycopg2-binary          # درایور دیتابیس (می‌تواند بماند)
 adbc-driver-postgresql
+msgpack
+zstandard
