@@ -20,8 +20,6 @@
  * ```
  */
 
-'use client'
-
 import { useState, useCallback, memo, useEffect, useMemo } from "react";
 import { Button } from "@heroui/button";
 import { Slider } from "@heroui/slider";
@@ -47,16 +45,31 @@ import {
   Activity,
 } from "lucide-react";
 
-import type { FilterTypes } from "@/types/types";
-import TimeFilterSection from "@/components/sideBarCards/TimeFilterSection";
-import { useGraphStore } from "@/store/useGraphStore";
-import { useAppStore } from "@/hooks/useAppStore";
-import api from "@/utils/fetcher";
+import type { FilterTypes } from "../../types/types";
+import TimeFilterSection from "./TimeFilterSection";
+import { useGraphStore } from "../../store/useGraphStore";
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
 
-// Note: This is a Next.js route page - all state comes from stores, no props
+/**
+ * Component props
+ */
+interface FiltersProps {
+  /** Additional CSS classes */
+  className?: string;
+  /** Loading state during processing */
+  isLoading?: boolean;
+  /** Callback when filters are submitted */
+  submit: (filters: FilterTypes) => void;
+  /** Set of currently selected node IDs */
+  selectedNodeIds: Set<string>;
+  /** Callback when node selection changes */
+  onSelectionChange: (selectedIds: Set<string>) => void;
+  /** Current active global filters */
+  currentFilters: FilterTypes | null;
+}
 
 /**
  * Weight filter options
@@ -89,19 +102,17 @@ const TIME_UNITS = [
 // COMPONENT
 // ============================================================================
 
-function Filters() {
-  // Get state from stores - this is a Next.js route so no props
-  const { allNodes, processInitialData } = useGraphStore();
-  const { 
-    selectedNodeIds, 
-    setSelectedNodeIds: onSelectionChange, 
-    filters: currentFilters,
-    setFilters,
-    setProcessedData,
-    setIsLoading,
-    isLoading
-  } = useAppStore();
-  
+function Filters({ 
+  className = "", 
+  submit, 
+  isLoading = false,
+  selectedNodeIds,
+  onSelectionChange,
+  currentFilters,
+}: FiltersProps) {
+  // Get allNodes from the graph store
+  const { allNodes } = useGraphStore();
+
   // Form state
   const [caseIdRange, setCaseIdRange] = useState<{ min?: number; max?: number }>({});
   const [meanTimeRange, setMeanTimeRange] = useState<{
@@ -181,7 +192,7 @@ function Filters() {
    * Form submission handler
    */
   const onSubmit = useCallback(
-    async (e: React.FormEvent) => {
+    (e: React.FormEvent) => {
       e.preventDefault();
 
       if (!currentFilters?.dateRange?.start || !currentFilters?.dateRange?.end) {
@@ -202,40 +213,13 @@ function Filters() {
           : outlierPercentage,
       };
 
-      // Update filters in store
-      setFilters(filters);
-      
-      // Call API with new filters (same as Navbar)
-      setIsLoading(true);
-      try {
-        const data = await api.graph.getData(filters);
-        
-        // Store in app state
-        setProcessedData({
-          graphData: data.graphData,
-          variants: data.variants,
-          outliers: data.outliers,
-          startActivities: data.startActivities,
-          endActivities: data.endActivities,
-        });
-        
-        // Process for graph visualization
-        processInitialData(
-          data.graphData, 
-          data.startActivities, 
-          data.endActivities
-        );
-      } catch (error) {
-        console.error("Error loading graph:", error);
-      } finally {
-        setIsLoading(false);
-      }
+      submit(filters);
     },
-    [caseIdRange, meanTimeRange, weightFilter, timeUnitFilter, outlierPercentage, currentFilters, setFilters, setIsLoading, setProcessedData, processInitialData]
+    [caseIdRange, meanTimeRange, weightFilter, timeUnitFilter, currentFilters, submit]
   );
 
   return (
-    <Form className={`h-full flex flex-col justify-between`} onSubmit={onSubmit}>
+    <Form className={`h-full flex flex-col justify-between ${className}`} onSubmit={onSubmit}>
       <div className="w-full space-y-3" dir="rtl">
         <Accordion
           keepContentMounted

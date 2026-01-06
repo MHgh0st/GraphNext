@@ -1,4 +1,4 @@
-version: '3.8'
+# version: "3.8"
 
 services:
   # سرویس دیتابیس
@@ -10,8 +10,7 @@ services:
       - POSTGRES_DB=graphdb
       - POSTGRES_USER=mhgh0st
       - POSTGRES_PASSWORD=MHgh.982
-    ports:
-      - "5432:5432"
+    # Note: No external port needed - backend connects via Docker network using hostname 'db'
 
   # سرویس جنگو (Backend)
   backend:
@@ -20,7 +19,7 @@ services:
     volumes:
       - ./backend:/app
     ports:
-      - "8000:8000"
+      - "9000:8000"
     depends_on:
       - db
     environment:
@@ -31,15 +30,16 @@ services:
 
   # سرویس فرانت (Next.js)
   frontend:
-    build: ./frontend
+    build: ./FrontEnd
     volumes:
-      - ./frontend:/app
-      - /app/node_modules  
-      - /app/.next         
+      - ./FrontEnd:/app
+      - /app/node_modules
+      # - /app/.next
     ports:
-      - "3000:3000"
+      - "9003:3000"
     environment:
       - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
 
 volumes:
   postgres_data:

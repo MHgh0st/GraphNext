@@ -3,7 +3,7 @@ uvicorn[standard]        # سرور اجرای برنامه (بسیار سریع
 pydantic-settings        # برای مدیریت تنظیمات و متغیرهای محیطی (.env)
 polars                   # پردازش داده (حفظ شود)
 connectorx               # خواندن سریع از دیتابیس (حفظ شود - عالی برای FastAPI)
-pyarrow                  # موتور پولارز (حفظ شود)
+pyarrow>=21.0.0,<22.0.0    # موتور پولارز - pinned to match JS apache-arrow 21.x
 numpy                    # محاسبات ریاضی (حفظ شود)
 psycopg2-binary          # درایور دیتابیس (می‌تواند بماند)
 adbc-driver-postgresql

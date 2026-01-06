@@ -1,26 +1,39 @@
 @import "tailwindcss";
+@plugin '../utils/hero.ts';
+@source '../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* تنظیم عرض و ارتفاع اسکرول‌بار */
+::-webkit-scrollbar {
+  width: 8px;  /* عرض برای اسکرول عمودی */
+  height: 8px; /* ارتفاع برای اسکرول افقی */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* تنظیم پس‌زمینه مسیر اسکرول (Track) */
+::-webkit-scrollbar-track {
+  background: transparent; /* شفاف باشد تا با پس‌زمینه پروژه یکی شود */
+  /* یا اگر مایلید مسیر مشخص باشد: background: #f1f5f9; */
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* تنظیم خود دستگیره اسکرول (Thumb) */
+::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1; /* رنگ طوسی ملایم (معادل slate-300 در تیل‌ویند) */
+  border-radius: 10px;       /* گوشه‌های کاملاً گرد */
+  border: 2px solid transparent; /* ایجاد فاصله با لبه‌ها برای زیبایی بیشتر */
+  background-clip: content-box;  /* باعث می‌شود حاشیه شفاف دیده شود و اسکرول باریک‌تر به نظر برسد */
+}
+
+/* حالت هاور روی دستگیره */
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8; /* تیره شدن هنگام موس‌اور (معادل slate-400) */
+}
+
+/* حالت اکتیو (زمانی که کلیک شده) */
+::-webkit-scrollbar-thumb:active {
+  background-color: #64748b; /* تیره‌تر هنگام درگ کردن (معادل slate-500) */
 }
