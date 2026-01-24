@@ -29,7 +29,7 @@ const CustomEdgeLabel = ({
         border border-zinc-700/50 
         text-zinc-300 text-[10px] 
         rounded-lg shadow-lg 
-        font-mono tracking-tighter 
+          tracking-tighter 
         cursor-pointer 
         transition-transform duration-200 ease-out
         hover:scale-125 hover:bg-zinc-800 hover:text-white hover:border-zinc-500

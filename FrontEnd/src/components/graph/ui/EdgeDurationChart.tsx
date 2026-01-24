@@ -6,45 +6,39 @@ import { Activity, Maximize2, Minimize2, X } from "lucide-react";
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import { motion, AnimatePresence } from "framer-motion";
-import type { FilterTypes, HistogramData } from "src/types/types";
-import GetEdgeStatisticsData from "../../../utils/GetEdgeStatisticsData";
+import type { HistogramData } from "@/types/types";
+import api from "@/utils/fetcher";
+import { useAppStore } from "@/hooks";
 
 interface EdgeDurationChartProps {
   source: string;
   target: string;
   duration: number;
-  filePath: string;
-  filters: FilterTypes;
 }
 
 export default function EdgeDurationChart({
   source,
   target,
   duration,
-  filePath,
-  filters,
 }: EdgeDurationChartProps) {
   const [histogramData, setHistogramData] = useState<HistogramData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   // 1. استیت جدید برای وضعیت بزرگنمایی
   const [isExpanded, setIsExpanded] = useState(false);
+  const {filters} = useAppStore()
 
   useEffect(() => {
     let isMounted = true;
     const fetchStats = async () => {
-      if (!filePath || !filters?.dateRange || !source || !target) return;
+      if (!filters?.dateRange || !source || !target) return;
       
       setIsLoading(true);
       try {
-        const stats = await GetEdgeStatisticsData(
-            filePath, 
-            filters.dateRange.start, 
-            filters.dateRange.end, 
-            'specific',
-            source,
-            target
-        ) as HistogramData;
+        const stats = await api.stats.getEdgeStats(source, target, {
+            startDate: filters.dateRange.start,
+            endDate: filters.dateRange.end
+        }) as HistogramData;
         
         if (isMounted) {
             setHistogramData(stats);
@@ -59,7 +53,7 @@ export default function EdgeDurationChart({
     fetchStats();
 
     return () => { isMounted = false; };
-  }, [filePath, filters, source, target]);
+  }, [filters, source, target]);
 
   // بستن با دکمه Esc
   useEffect(() => {

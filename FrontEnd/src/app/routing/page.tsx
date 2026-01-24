@@ -74,7 +74,7 @@ export default function PathfindingPage() {
 
   // --- Get all nodes (excluding START_NODE and END_NODE) ---
   const baseNodes = useMemo(() => {
-    return allNodes.filter(node => node.id !== "START_NODE" && node.id !== "END_NODE");
+    return allNodes;
   }, [allNodes]);
 
   // --- Initialize search with base nodes ---
@@ -90,12 +90,14 @@ export default function PathfindingPage() {
     
     for (const variant of variantList) {
       const variantPath = variant.Variant_Path;
-      const startIndex = variantPath.indexOf(startId);
+      let startIndex = variantPath.indexOf(startId);
+      if(startId === "START_NODE") startIndex = 0;
       
       if (startIndex === -1) continue;
       
       // Find the LAST occurrence of endId to correctly handle duplicate labels
-      const endIndex = variantPath.lastIndexOf(endId);
+      let endIndex = variantPath.lastIndexOf(endId);
+      if(endId === "END_NODE") endIndex = variantPath.length - 1;
       
       // Validate: endIndex must exist and be after startIndex
       if (endIndex === -1 || endIndex <= startIndex) continue;

@@ -395,7 +395,7 @@ function Filters() {
             <div className="pt-2 px-2">
               <div className="p-4 rounded-2xl bg-white/50 border border-white/60 backdrop-blur-sm shadow-sm space-y-4">
                 <div className="flex justify-between items-center text-slate-500">
-                  <span className="text-[10px] font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
+                  <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
                     {Array.isArray(outlierPercentage)
                       ? outlierPercentage[0]
                       : outlierPercentage}

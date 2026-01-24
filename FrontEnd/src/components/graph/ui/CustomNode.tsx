@@ -70,7 +70,7 @@ const CustomNode = ({ data, selected }: NodeProps) => {
       {subLabel && (
         <div className="flex items-center gap-1 mt-1 pt-2 border-t border-white/5">
           <Clock size={12} className="text-white/40" />
-          <span className="text-[10px] text-white/60 font-mono">{subLabel}</span>
+          <span className="text-[10px] text-white/60  ">{subLabel}</span>
         </div>
       )}
 

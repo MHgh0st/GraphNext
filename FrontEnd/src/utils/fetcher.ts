@@ -420,7 +420,7 @@ export const api = {
             duration_percentile: number;
             is_slower_than_average: boolean;
           };
-        }>("/api/search/search", {
+        }>("/api/search", {
           params: {
             case_id: caseId,
             start_date: options?.startDate,

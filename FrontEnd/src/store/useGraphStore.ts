@@ -178,7 +178,7 @@ function calculateEdgeOverride(
     
     // Use Total_Timings if available, otherwise fall back to avgDuration
     const totalDuration = (activePath as any)._specificTotalDurations?.[edge.id] ?? avgDuration;
-
+    console.log("avgDuration: ", avgDuration)
     return {
       displayLabel,
       tooltipOverride: {
@@ -375,6 +375,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         });
       }
     });
+    
 
     // Create START_NODE
     const startNode: Node = {

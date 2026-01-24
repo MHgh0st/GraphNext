@@ -2,7 +2,7 @@ import { X, Network, Clock, Hash, Activity, ArrowLeftRight } from "lucide-react"
 import { CardHeader, CardBody } from "@heroui/card";
 import { Button } from "@heroui/button";
 import EdgeDurationChart from "./EdgeDurationChart";
-import type { FilterTypes } from "src/types/types";
+import type { FilterTypes } from "@/types/types";
 
 interface EdgeTooltipProps {
   edgeTooltipTitle: string | null;
@@ -12,8 +12,6 @@ interface EdgeTooltipProps {
     source: string;
     target: string;
     duration: number;
-    filePath: string;
-    filters: FilterTypes;
   } | null;
 }
 
@@ -71,7 +69,7 @@ export default function EdgeTooltip({
                   {getIcon(item.label)}
                   {item.label}
                 </span>
-                <span className="text-sm font-bold text-slate-700 font-mono tracking-tight text-center">
+                <span className="text-sm font-bold text-slate-700 tracking-tight text-center">
                   {item.value}
                 </span>
               </div>
@@ -92,10 +90,7 @@ export default function EdgeTooltip({
         <EdgeDurationChart 
             source={chartProps.source}
             target={chartProps.target}
-            duration={chartProps.duration}
-            filePath={chartProps.filePath}
-            filters={chartProps.filters}
-            
+            duration={chartProps.duration}            
         />
       )}
         </div>

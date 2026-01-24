@@ -20,7 +20,7 @@ app.add_middleware(
 app.include_router(GraphData.router, prefix="/api/graph", tags=["Graph Operations"])
 
 # Case Search - /api/search/*
-app.include_router(SearchCase.router, prefix="/api/search", tags=["Case Search"])
+app.include_router(SearchCase.router, prefix="/api", tags=["Case Search"])
 
 # Statistics - /api/stats/*
 app.include_router(Stats.router, prefix="/api/stats", tags=["Statistics"])

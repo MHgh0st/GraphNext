@@ -83,7 +83,7 @@ const EdgeRow = ({ item, isSelected, onEdgeSelect }: EdgeRowProps) => {
             variant="flat" 
             classNames={{
                 base: `h-6 px-1 border transition-colors ${isSelected ? "bg-white border-blue-200" : "bg-slate-100 border-slate-200"}`,
-                content: "text-[10px] font-mono font-bold text-slate-600 flex items-center gap-1"
+                content: "text-[10px]   font-bold text-slate-600 flex items-center gap-1"
             }}
           >
             <Hash size={10} className={isSelected ? "text-blue-400" : "text-slate-400"} />

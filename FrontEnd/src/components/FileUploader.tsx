@@ -223,7 +223,7 @@ export default function FileUploader() {
                     {fileName}
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded text-uppercase font-mono">
+                    <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded text-uppercase  ">
                       {fileExt?.toUpperCase()}
                     </span>
                     <span className="text-[10px] text-slate-500 flex items-center gap-1">

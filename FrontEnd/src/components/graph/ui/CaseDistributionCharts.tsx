@@ -4,44 +4,40 @@ import Chart from "react-apexcharts";
 import { ApexOptions } from "apexcharts";
 import { Clock, BarChart2, Activity, Maximize2, Minimize2, X } from "lucide-react";
 import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip"; // ایمپورت تولتیپ
-import { motion, AnimatePresence } from "framer-motion"; // ایمپورت انیمیشن
-import type { SearchCaseIdsData, EdgeStatisticsGlobalData, FilterTypes } from "src/types/types";
-import GetEdgeStatisticsData from "../../../utils/GetEdgeStatisticsData";
-
+import { Tooltip } from "@heroui/tooltip"; 
+import { motion, AnimatePresence } from "framer-motion"; 
+import type { SearchCaseIdsData, EdgeStatisticsGlobalData } from "@/types/types";
+import { useAppStore } from "@/hooks";
+import api from "@/utils/fetcher";
 interface CaseDistributionChartsProps {
   searchResult: SearchCaseIdsData;
-  filePath: string;
-  filters: FilterTypes;
 }
 
 type ChartType = 'time' | 'steps';
 
 export default function CaseDistributionCharts({
   searchResult,
-  filePath,
-  filters,
 }: CaseDistributionChartsProps) {
   const [globalStatisticsData, setGlobalStatisticsData] = useState<EdgeStatisticsGlobalData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeChart, setActiveChart] = useState<ChartType>('time');
   const [isExpanded, setIsExpanded] = useState(false);
-
+    const {filters} = useAppStore()
   useEffect(() => {
     let isMounted = true;
     const fetchStats = async () => {
-      if (!filePath || !filters?.dateRange) {
+      if ( !filters?.dateRange) {
           if (isMounted) setIsLoading(false);
           return;
       }
       
       setIsLoading(true);
       try {
-        const globalStats = await GetEdgeStatisticsData(
-            filePath, 
-            filters.dateRange.start, 
-            filters.dateRange.end, 
-            'global'
+        const globalStats = await api.stats.getGlobalStats(
+            {
+                startDate: filters.dateRange.start,
+                endDate: filters.dateRange.end
+            }
         ) as EdgeStatisticsGlobalData;
         
         if (isMounted) {
@@ -57,7 +53,7 @@ export default function CaseDistributionCharts({
     fetchStats();
 
     return () => { isMounted = false; };
-  }, [filePath, filters]);
+  }, [ filters]);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {

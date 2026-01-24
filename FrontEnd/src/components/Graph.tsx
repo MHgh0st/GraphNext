@@ -534,25 +534,28 @@ function Graph({
   ]);
 
   const edgeChartProps = useMemo(() => {
-    if ((activeSideBar !== "SearchCaseIds" && activeSideBar !== "Outliers") || !activeTooltipEdgeId || !filePath || !filters) {
+    if ((activeSideBar !== "SearchCaseIds" && activeSideBar !== "Outliers") || !activeTooltipEdgeId) {
       return null;
     }
 
     const activeEdge = edgesForRender.find((e) => e.id === activeTooltipEdgeId);
     const activeEdgeData = activeEdge?.data as CustomEdgeData | undefined;
-    const rawDuration = activeEdgeData?.tooltipOverrideData?.rawDuration;
+    const rawDuration = activeEdgeData?.pathDuration;
+    console.log("_____ LOG FROM edgeChartProps:",
+      "activeEdge: ", activeEdge, 
+      "activeEdgeData: ", activeEdgeData,
+      "rawDuration: ", rawDuration
+    )
 
     if (activeEdge && typeof rawDuration === "number") {
       return {
         source: activeEdge.source,
         target: activeEdge.target,
         duration: rawDuration,
-        filePath,
-        filters,
       };
     }
     return null;
-  }, [activeTooltipEdgeId, activeSideBar, edgesForRender, filePath, filters]);
+  }, [activeTooltipEdgeId, activeSideBar, edgesForRender]);
 
   if (isLoading) {
     return (

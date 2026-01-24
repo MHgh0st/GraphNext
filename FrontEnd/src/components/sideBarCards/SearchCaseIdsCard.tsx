@@ -271,9 +271,9 @@ export default function SearchCaseIdsCard({
                     labelPlacement="outside"
                     classNames={{ 
                         inputWrapper: "h-10 bg-slate-50 hover:bg-slate-100 focus-within:bg-white border-slate-200 shadow-none transition-colors", 
-                        input: "text-right font-mono font-medium text-slate-700 placeholder:font-vazir" 
+                        input: "text-right   font-medium text-slate-700 placeholder:font-vazir" 
                     }}
-                    startContent={<span className="text-slate-400 text-xs font-mono border-r border-slate-200 pr-2 mr-1">#</span>}
+                    startContent={<span className="text-slate-400 text-xs   border-r border-slate-200 pr-2 mr-1">#</span>}
                 />
                 <Button 
                     isIconOnly 
@@ -310,7 +310,7 @@ export default function SearchCaseIdsCard({
                     </div>
                     <span className="text-xs font-bold text-slate-700">پرونده یافت شد</span>
                 </div>
-                <Chip size="sm" variant="flat" className="bg-slate-100 text-slate-600 border border-slate-200 h-6 text-[10px] font-mono ltr">
+                <Chip size="sm" variant="flat" className="bg-slate-100 text-slate-600 border border-slate-200 h-6 text-[10px]   ltr">
                     ID: {searchResult.data.case_id}
                 </Chip>
                 </div>
@@ -320,7 +320,7 @@ export default function SearchCaseIdsCard({
                     <div className="p-1 bg-white text-emerald-600 rounded border border-slate-100 shadow-sm"><Clock size={12} /></div>
                     <div className="flex flex-col">
                         <span className="text-[9px] text-slate-400">مدت زمان</span>
-                        <span className="text-[11px] font-bold text-slate-700 font-mono dir-ltr text-right">{formatDuration(searchResult.data.total_duration)}</span>
+                        <span className="text-[11px] font-bold text-slate-700   dir-ltr text-right">{formatDuration(searchResult.data.total_duration)}</span>
                     </div>
                 </div>
                 <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 flex items-center gap-2">
@@ -415,7 +415,7 @@ export default function SearchCaseIdsCard({
                                                 {/* نمایش زمان */}
                                                 {!isLast && duration !== undefined && (
                                                     <div className="flex justify-start mt-1.5">
-                                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[9px] text-slate-500 font-mono shadow-sm">
+                                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[9px] text-slate-500   shadow-sm">
                                                             <ArrowDown size={8} />
                                                             {formatDuration(duration)}
                                                         </div>
