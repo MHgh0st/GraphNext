@@ -151,7 +151,7 @@ const layoutOptions = {
 // HELPER FUNCTIONS
 // ============================================================================
 
-function calculateEdgeOverride(
+export function calculateEdgeOverride(
   edge: Edge,
   activePath: ExtendedPath | null | undefined
 ): { displayLabel: string; tooltipOverride?: any } | null {
@@ -474,6 +474,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       edgesToLayout = edgesToLayout.filter((edge) => filteredEdgeIds.has(edge.id));
     }
 
+
     // Add Ghost Nodes (from activePathInfo)
     if (activePathInfo?.nodes && activePathInfo.nodes.length > 0) {
       const existingNodeIds = new Set(nodesToLayout.map((n) => n.id));
@@ -496,6 +497,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       nodesToLayout = [...nodesToLayout, ...ghostNodes];
     }
 
+
     // Add Ghost Edges
     if (activePathInfo?.edges && activePathInfo.edges.length > 0) {
       const existingEdgeIds = new Set(edgesToLayout.map((e) => e.id));
@@ -508,7 +510,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
           source: source,
           target: target,
           type: "default",
-          animated: true,
+          animated: false,
           label: "",
           style: {
             stroke: "#f59e0b",
@@ -520,6 +522,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       });
 
       edgesToLayout = [...edgesToLayout, ...ghostEdges];
+      console.log('final edges: ',edgesToLayout.length)
     }
 
     // Add Search Case Nodes (non-ghosted)

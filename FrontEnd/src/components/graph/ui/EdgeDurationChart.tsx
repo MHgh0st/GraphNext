@@ -38,10 +38,10 @@ export default function EdgeDurationChart({
         const stats = await api.stats.getEdgeStats(source, target, {
             startDate: filters.dateRange.start,
             endDate: filters.dateRange.end
-        }) as HistogramData;
+        }) as unknown as { source: string; target: string; histogram: HistogramData };
         
-        if (isMounted) {
-            setHistogramData(stats);
+        if (isMounted && stats.histogram) {
+            setHistogramData(stats.histogram);
         }
       } catch (error) {
         console.error("Failed to fetch edge stats", error);
@@ -74,7 +74,7 @@ export default function EdgeDurationChart({
   };
 
   const chartConfig = useMemo(() => {
-    if (!histogramData || !histogramData.bins.length) return null;
+    if (!histogramData || !histogramData.bins || !histogramData.bins.length) return null;
 
     const bins = histogramData.bins;
     const counts = histogramData.counts;

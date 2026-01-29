@@ -160,6 +160,7 @@ function calculateEdgeOverride(
           label: frequency,
           meanTime: tooltipMeanTime,
           totalTime: tooltipTotalTime,
+          rawDuration: totalDuration,
         },
       };
     }
@@ -310,13 +311,19 @@ function Graph({
         const edgeId = `${src}->${trg}`;
 
         if (!existingEdgeIds.has(edgeId)) {
+          // Get duration data from activePath
+          const edgeDuration = activePath._specificEdgeDurations?.[edgeId];
+          const edgeTotalDuration = activePath._specificTotalDurations?.[edgeId] ?? edgeDuration;
+          const pathFrequency = activePath._frequency || 1;
+          const label = typeof edgeDuration === 'number' ? formatDuration(edgeDuration) : "";
+          
           newEdges.push({
             id: edgeId,
             source: src,
             target: trg,
             type: "default",
             animated: true,
-            label: "",
+            label: label,
             style: isPureSearchMode 
                 ? { strokeWidth: 1.5, stroke: "#b1b1b7" } 
                 : {
@@ -327,10 +334,17 @@ function Graph({
                 },
             data: { 
                 isGhost: !isPureSearchMode,
+                // Add duration data for tooltip and chart
+                pathDuration: edgeDuration,
+                pathFrequency: pathFrequency,
+                Tooltip_Mean_Time: typeof edgeDuration === 'number' ? formatDuration(edgeDuration) : undefined,
+                Tooltip_Total_Time: typeof edgeTotalDuration === 'number' ? formatDuration(edgeTotalDuration) : undefined,
+                Case_Count: pathFrequency,
             } as CustomEdgeData,
           } as Edge);
         }
       }
+      console.log("newEdges", newEdges);
 
       if (newEdges.length === 0) {
          if ( prevEdges.length === cleanEdges.length) return prevEdges;
@@ -341,6 +355,7 @@ function Graph({
     });
 
   }, [activePath, activeSideBar, setLayoutedEdges, allEdges.length]);
+
 
 
   // ... (بقیه کدها بدون تغییر: onNodesChange, onMoveStart, useMemoها و ...)
@@ -387,6 +402,7 @@ function Graph({
       containerRef.current?.classList.remove("is-interacting");
       const data = edge.data as CustomEdgeData | undefined;
       const overrideData = data?.tooltipOverrideData;
+      console.log("Selected Edge: ", data)
       handleEdgeSelect(edge.id, overrideData);
     },
     [handleEdgeSelect]
@@ -443,6 +459,7 @@ function Graph({
   const edgesForRender = useMemo(() => {
     const isHighlightingPath = selectedPathEdges.size > 0;
     const showEdgeLabels = zoomLevel > EDGE_LABEL_ZOOM_THRESHOLD;
+    const isSearchCaseMode = activeSideBar === "SearchCaseIds";
 
     const processedEdges = layoutedEdges.map((edge) => {
       const edgeData = edge.data as CustomEdgeData | undefined;
@@ -451,6 +468,9 @@ function Graph({
 
       const isEdgeBetweenPathNodes = selectedPathNodes.has(edge.source) && selectedPathNodes.has(edge.target);
       const isPathHighlighted = selectedPathEdges.has(edge.id) || isGhost || isEdgeBetweenPathNodes;
+      
+      // In SearchCaseIds mode, edges in the path should be styled distinctively
+      const isSearchPathEdge = isSearchCaseMode && (selectedPathEdges.has(edge.id) || isEdgeBetweenPathNodes);
 
       const isConnectedToSelectedNode = selectedNodeId && (edge.source === selectedNodeId || edge.target === selectedNodeId);
 
@@ -458,7 +478,7 @@ function Graph({
       let grayscale = false;
 
       if (selectedNodeId) {
-        if (!isConnectedToSelectedNode && !isGhost) {
+        if (!isConnectedToSelectedNode && !isGhost && !isSearchPathEdge) {
             opacity = 0.25;
             grayscale = true;
         }
@@ -474,6 +494,20 @@ function Graph({
       
       const showLabel = (isConnectedToSelectedNode || isPathHighlighted || showEdgeLabels) && opacity > 0.5;
       const finalLabel = showLabel ? displayLabel : "";
+
+      // Determine stroke color and style based on edge type
+      let strokeColor = edge.style?.stroke;
+      let strokeDasharray = edge.style?.strokeDasharray;
+      let strokeWidth = edge.style?.strokeWidth;
+      let animated = edge.animated;
+
+      // Only ghost edges (edges not in base graph) get distinctive styling
+      if (isGhost) {
+        strokeColor = isTooltipActive ? "#FFC107" : "#f59e0b"; // Amber
+        strokeDasharray = "5, 5"; // Dashed
+        strokeWidth = 2.5;
+        animated = true;
+      }
 
       return {
         ...edge,
@@ -493,14 +527,12 @@ function Graph({
           opacity,
           filter: grayscale ? "grayscale(100%)" : "none",
           zIndex: isTooltipActive ? 1000 : (isPathHighlighted || isConnectedToSelectedNode) ? 500 : 0,
-          stroke: isGhost 
-            ? (isTooltipActive 
-                ? "#FFC107" 
-                : (edge.selected ? edge.style?.stroke : (edge.style?.stroke || "#f59e0b"))) 
-            : edge.style?.stroke,
-            
+          stroke: strokeColor,
+          strokeDasharray: strokeDasharray,
+          strokeWidth: strokeWidth,
           transition: "all 0.4s ease",
         },
+        animated: animated,
         focusable: true,
       };
     });
@@ -530,7 +562,8 @@ function Graph({
     zoomLevel,
     handleEdgeSelect,
     selectedNodeId,
-    selectedPathNodes
+    selectedPathNodes,
+    activeSideBar,
   ]);
 
   const edgeChartProps = useMemo(() => {
@@ -540,12 +573,10 @@ function Graph({
 
     const activeEdge = edgesForRender.find((e) => e.id === activeTooltipEdgeId);
     const activeEdgeData = activeEdge?.data as CustomEdgeData | undefined;
-    const rawDuration = activeEdgeData?.pathDuration;
-    console.log("_____ LOG FROM edgeChartProps:",
-      "activeEdge: ", activeEdge, 
-      "activeEdgeData: ", activeEdgeData,
-      "rawDuration: ", rawDuration
-    )
+    
+    // Check for rawDuration in tooltipOverrideData first, then fallback to pathDuration on edge.data
+    const rawDuration = activeEdgeData?.tooltipOverrideData?.rawDuration 
+      ?? (activeEdgeData as any)?.pathDuration;
 
     if (activeEdge && typeof rawDuration === "number") {
       return {

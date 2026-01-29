@@ -29,7 +29,7 @@ import type {
  */
 const API_BASE_URL = typeof window === "undefined"
   ? (process.env.INTERNAL_API_URL || "http://backend:8000")  // Server-side: Docker internal
-  : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:9000"); // Client-side: Browser
+  : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"); // Client-side: Browser
 
 /**
  * Default request timeout in milliseconds
@@ -302,7 +302,7 @@ export const api = {
       console.log("=== DEBUG: API Request ===");
       console.log("Filters received:", filters);
       const requestUrl = buildUrl("/api/graph/data", params);
-
+      console.log('url: ',requestUrl)
       // Fetch compressed data
       const response = await fetch(requestUrl, { method: "POST" });
       

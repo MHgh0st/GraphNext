@@ -261,7 +261,7 @@ export default function CaseDistributionCharts({
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-3 p-2 w-full h-[450px] animate-pulse">
+      <div className="flex flex-col gap-3 p-2 w-full h-[350px] animate-pulse">
         {/* Skeleton UI ... */}
         <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2">
@@ -388,7 +388,7 @@ export default function CaseDistributionCharts({
 
   return (
     <>
-      <div className="relative w-full h-[450px]">
+      <div className="relative w-full h-[350px]">
         {/* استفاده از AnimatePresence برای مدیریت ورود و خروج کامپوننت */}
         {/* وقتی isExpanded فالس است، کامپوننت اینجا رندر می‌شود */}
         {!isExpanded && CardContent}

@@ -1,28 +1,21 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react'; // Activity حذف شد چون در react وجود ندارد
 import { NumberInput } from '@heroui/number-input';
 import { Button } from '@heroui/button';
 import { Chip } from '@heroui/chip';
-import { Accordion, AccordionItem } from '@heroui/accordion';
-
+import { ScrollShadow } from "@heroui/scroll-shadow";
 import {
   Search,
   XCircle,
   CheckCircle2,
-  Clock,
-  MapPin,
-  FileText,
+  Activity as ActivityIcon,
+  SquareActivity,
   ArrowDown,
-  TrendingUp,
-  TrendingDown,
-  AlertCircle,
-  Info,
-  Activity,
-  ListStart,
-  CalendarSearch,
-  History,
-  ArrowLeft,
+  Timer,
+  LayoutList,
+  BarChart3,
+  History
 } from 'lucide-react';
 
 import type { SearchCaseIdsData, ExtendedPath } from '@/types/types';
@@ -32,9 +25,9 @@ import { useGraphStore } from '@/store/useGraphStore';
 import CaseDistributionCharts from '@/components/graph/ui/CaseDistributionCharts';
 import { useAppStore } from '@/hooks';
 
-
 export default function SearchCaseIdsRoute() {
-const { 
+  // --- Global Store ---
+  const { 
     filters, 
     graphData, 
     startEndNodes, 
@@ -44,55 +37,38 @@ const {
     setSelectedPathEdges,
     setSelectedPathIndex 
   } = useAppStore();  
+  
+  const graphStore = useGraphStore();
+
+  // --- Local State ---
   const [caseIdInput, setCaseIdInput] = useState<number | undefined>();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchResult, setSearchResult] = useState<SearchCaseIdsData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const cleanupRef = useRef<(() => void) | null>(null);
-  const graphStore = useGraphStore();
+  const [activeTab, setActiveTab] = useState<"Timeline" | "Charts">("Timeline");
 
-    useEffect(() => {
-    return () => {
-      // 1. پاکسازی selected nodes و edges در appStore
-      setSelectedPathNodes(new Set());
-      setSelectedPathEdges(new Set());
-      setSelectedPathIndex(null);
-      
-      // 2. پاکسازی active path در graphStore
-      graphStore.setActivePath(null);
-      
-      // 3. بازگرداندن layout اصلی گراف (با فیلترهای قبلی)
-      if (graphData && startEndNodes) {
-        graphStore.computeLayout({
-          graphData,
-          colorPaletteKey: selectedColorPalette,
-          startEndNodes: startEndNodes,
-          filteredNodeIds: selectedNodeIds,
-          filteredEdgeIds: null,
-          activePathInfo: undefined,
-          searchCasePathInfo: undefined,
-        });
-      }
-    };
-  }, []); // dependency array خالی - فقط هنگام unmount اجرا شود
-
-  // پاکسازی stateهای داخلی هنگام mount - فقط یکبار اجرا شود
+  // --- Effects (Cleanup & Setup) ---
   useEffect(() => {
-    // این ensure می‌کند وقتی صفحه باز می‌شود stateهای داخلی clean هستند
+    return () => {
+      resetGraphState();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     setCaseIdInput(undefined);
     setSearchResult(null);
     setError(null);
-  }, []); // dependency array خالی - فقط هنگام mount اجرا شود
+    resetGraphState();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // پاکسازی گراف هنگام mount - فقط یکبار اجرا شود
-  useEffect(() => {
-    // همچنین پاکسازی گراف فعلی
+  const resetGraphState = () => {
     setSelectedPathNodes(new Set());
     setSelectedPathEdges(new Set());
     setSelectedPathIndex(null);
     graphStore.setActivePath(null);
     
-    // بازگرداندن گراف به حالت اصلی
     if (graphData && startEndNodes) {
       graphStore.computeLayout({
         graphData,
@@ -104,26 +80,23 @@ const {
         searchCasePathInfo: undefined,
       });
     }
-  }, []); 
+  };
+
   const displayPathInGraph = useCallback((pathForGraph: ExtendedPath) => {
-    // 1. ذخیره مسیر در store گراف
     graphStore.setActivePath(pathForGraph);
-    
-    // 2. به روزرسانی selected nodes و edges در appStore
     setSelectedPathNodes(new Set(pathForGraph.nodes));
     setSelectedPathEdges(new Set(pathForGraph.edges));
     setSelectedPathIndex(0);
     
-    // 3. ایجاد activePathInfo
     const activePathInfo = {
       nodes: pathForGraph.nodes,
       edges: pathForGraph.edges,
       edgeDurations: pathForGraph._specificEdgeDurations || {},
-      edgeTotalDurations: {},
+      edgeTotalDurations: pathForGraph._specificTotalDurations || {},
       frequency: pathForGraph._frequency || 1,
     };
+
     
-    // 4. فراخوانی computeLayout با activePathInfo
     if (graphData && startEndNodes) {
       graphStore.computeLayout({
         graphData: graphData,
@@ -135,16 +108,9 @@ const {
         searchCasePathInfo: undefined,
       });
     }
-  }, [
-    graphStore, 
-    setSelectedPathNodes, 
-    setSelectedPathEdges, 
-    setSelectedPathIndex, 
-    graphData, 
-    startEndNodes, 
-    selectedColorPalette
-  ]);
+  }, [graphStore, setSelectedPathNodes, setSelectedPathEdges, setSelectedPathIndex, graphData, startEndNodes, selectedColorPalette]);
 
+  // --- Actions ---
   const submit = async () => {
     if (!caseIdInput) {
       setError('لطفاً شناسه پرونده را وارد کنید.');
@@ -152,7 +118,7 @@ const {
     }
 
     if (!filters?.dateRange.start || !filters.dateRange.end) {
-      setError('لطفا در منوی بالای گراف، بازه زمانی را مشخص کنید.');
+      setError('بازه زمانی مشخص نشده است.');
       return;
     }
 
@@ -171,7 +137,9 @@ const {
       setSearchResult(response);
 
       if (response.found && response.data && response.data.nodes.length > 0) {
-        // پردازش برای نمایش در گراف
+        // ... (Logic پردازش دیتا همانند قبل) ...
+        // برای خلاصه شدن کد اینجا تکرار نکردم چون تغییری نکرده
+        // Process Path Data Logic Here
         const edgeStats: Record<string, { sum: number; count: number }> = {};
         const nodes = response.data.nodes;
         const durations = response.data.edge_durations;
@@ -195,6 +163,12 @@ const {
           specificDurations[edgeId] = stat.sum / stat.count;
         });
 
+        const specificTotalDurations: Record<string, number> = {};
+        Object.keys(edgeStats).forEach((edgeId) => {
+          const stat = edgeStats[edgeId];
+          specificTotalDurations[edgeId] = stat.sum;
+        });
+
         const pathForGraph: ExtendedPath = {
           nodes: response.data.nodes,
           edges: Object.keys(specificDurations),
@@ -206,18 +180,15 @@ const {
           _fullPathNodes: response.data.nodes,
           _variantTimings: response.data.edge_durations,
           _specificEdgeDurations: specificDurations,
-          _specificTotalDurations: specificDurations,
+          _specificTotalDurations: specificTotalDurations,
         };
         
-        // نمایش مسیر در گراف
         displayPathInGraph(pathForGraph);
-        
       } else {
-        setError('پرونده‌ای با این شناسه در محدوده انتخابی یافت نشد.');
+        setError('پرونده‌ای با این شناسه یافت نشد.');
       }
     } catch (err: any) {
       console.error('Search error:', err);
-      
       if (err.status === 404) {
         setError('پرونده‌ای با این شناسه یافت نشد.');
       } else {
@@ -232,293 +203,286 @@ const {
     if (e.key === 'Enter') submit();
   };
 
+  const clearSearch = () => {
+    setCaseIdInput(undefined);
+    setSearchResult(null);
+    setError(null);
+    resetGraphState();
+  };
+
+  // --- Render Helpers ---
   const renderPerformanceStats = () => {
     if (!searchResult?.data?.position_stats) return null;
 
     const stats = searchResult.data.position_stats;
-    const isCritical = stats.duration_percentile > 80;
-    const isWarning = stats.duration_percentile > 50 && stats.duration_percentile <= 80;
+    const percentile = stats.duration_percentile;
+    
+    const isCritical = percentile > 80;
+    const isWarning = percentile > 50 && percentile <= 80;
 
-    let styleClass = 'bg-slate-50 text-slate-600 border-slate-200';
-    let icon = <Info size={16} />;
-    let title = 'عملکرد نرمال';
-    let desc = 'زمان اجرای این پرونده در محدوده میانگین است.';
+    let styleClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    let barColor = 'bg-emerald-500';
+    let icon = <CheckCircle2 size={18} />;
+    let title = 'عملکرد سریع (مطلوب)';
+    let description = '';
 
     if (isCritical) {
       styleClass = 'bg-rose-50 text-rose-700 border-rose-200';
-      icon = <AlertCircle size={16} />;
+      barColor = 'bg-rose-500';
+      icon = <ActivityIcon size={18} />;
       title = 'عملکرد بحرانی (کند)';
-      desc = `این پرونده از ${stats.duration_percentile.toFixed(0)}٪ کل پرونده‌ها کندتر است.`;
+      description = `این پرونده از ${percentile.toFixed(0)}٪ کل پرونده‌های ثبت شده کندتر بوده است.`;
     } else if (isWarning) {
       styleClass = 'bg-amber-50 text-amber-700 border-amber-200';
-      icon = <TrendingUp size={16} />;
+      barColor = 'bg-amber-500';
+      icon = <ActivityIcon size={18} />;
       title = 'کندتر از میانگین';
-      desc = `این پرونده از ${stats.duration_percentile.toFixed(0)}٪ پرونده‌ها طولانی‌تر شده است.`;
+      description = `زمان اجرای این مورد از میانگین بیشتر است (کندتر از ${percentile.toFixed(0)}٪ موارد).`;
     } else {
-      styleClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      icon = <TrendingDown size={16} />;
-      title = 'عملکرد سریع';
-      desc = `این پرونده سریع‌تر از ${(100 - stats.duration_percentile).toFixed(0)}٪ موارد مشابه انجام شده است.`;
+      const fasterThan = 100 - percentile;
+      title = 'عملکرد نرمال و سریع';
+      description = `این پرونده سریع‌تر از ${fasterThan.toFixed(0)}٪ موارد مشابه انجام شده است.`;
     }
 
     return (
-      <div className={`mt-2 p-3 rounded-xl border ${styleClass} flex flex-col gap-1`}>
-        <div className="flex items-center gap-2 font-bold text-xs">
-          {icon}
-          <span>{title}</span>
+      <div className={`p-4 rounded-xl border ${styleClass} flex flex-col gap-3 mb-3 shadow-sm`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-bold">
+            {icon}
+            <span>{title}</span>
+          </div>
         </div>
-        <p className="text-[11px] opacity-90 leading-5">
-          {desc}
-          {stats.is_slower_than_average && isCritical && (
-            <span className="block mt-1 font-semibold opacity-100">• زمان کل بیشتر از میانگین جامعه آماری است.</span>
-          )}
+        <p className="text-xs opacity-90 leading-5 font-medium">
+          {description}
         </p>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex justify-between text-[10px] opacity-70 px-0.5">
+            <span>سریع‌ترین</span>
+            <span>کندترین</span>
+          </div>
+          <div className="h-2 w-full bg-black/5 rounded-full overflow-hidden relative">
+            <div 
+              className={`h-full rounded-full ${barColor} transition-all duration-1000 ease-out`}
+              style={{ width: `${percentile}%` }}
+            />
+          </div>
+        </div>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-4 md:p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="flex flex-col h-full gap-3 p-1">
+      
+      {/* --- Top Section --- */}
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex flex-col gap-3 shrink-0 relative overflow-hidden">
+        <div className="absolute top-1/2 right-8 left-8 h-0.5 bg-slate-200 -z-10" />
 
-
-        <div className="flex flex-col gap-6">
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sticky top-6">
-              
-
-            
-
-              {/* ورودی شماره پرونده */}
-              <div className="mb-6">
-                {/* <label className="block text-sm font-medium text-slate-700 mb-2">
-                  شناسه پرونده (Case ID)
-                </label> */}
-                <div className="flex gap-3">
-                  <NumberInput
-                    placeholder="مثال: ۱۲۳۴۵"
-                    value={caseIdInput}
-                    onValueChange={setCaseIdInput}
-                    onKeyDown={handleKeyDown}
-                    isDisabled={isLoading}
-                    formatOptions={{ useGrouping: false }}
-                    minValue={0}
-                    hideStepper
-                    isClearable
-                    variant="bordered"
-                    classNames={{
-                      inputWrapper: ' bg-white hover:bg-slate-50 border-slate-300',
-                      input: 'text-right',
-                    }}
-                    startContent={
-                      <span className="text-slate-400 text-sm border-r border-slate-300 mr-2">#</span>
-                    }
-                    className="flex-1"
-                  />
-                  <Button
-                    color="primary"
-                    variant="shadow"
-                    onPress={submit}
-                    isLoading={isLoading}
-                    isIconOnly
-                    className="bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/30"
-                  >
-                    <Search size={22}/>
-                  </Button>
-                </div>
+        <div className="flex gap-2 relative z-10">
+          <NumberInput
+            placeholder="شناسه پرونده (مثال: ۱۲۳۴۵)"
+            value={caseIdInput}
+            onValueChange={setCaseIdInput}
+            onKeyDown={handleKeyDown}
+            isDisabled={isLoading}
+            min={0}
+            hideStepper
+            formatOptions={{ useGrouping: false }}
+            variant="flat"
+            size="sm"
+            startContent={
+              <div className="bg-slate-200/50 p-1 rounded text-slate-500 mr-1">
+                <Search size={14} />
               </div>
-
-              {error && (
-                <div className="p-4 rounded-xl bg-rose-50 text-rose-700 text-sm flex items-start gap-3 border border-rose-200 animate-appearance-in">
-                  <XCircle size={18} className="shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {searchResult?.found && (
-                <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-                      <CheckCircle2 size={20} />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-emerald-800">پرونده یافت شد!</p>
-                      <p className="text-sm text-emerald-600">
-                        شناسه: <span className="font-mono font-bold">{searchResult.data?.case_id}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-white p-3 rounded-lg border border-emerald-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Clock size={14} className="text-emerald-600" />
-                        <span className="text-xs text-slate-500">مدت زمان</span>
-                      </div>
-                      <p className="text-sm font-bold text-slate-800">
-                        {formatDuration(searchResult.data!.total_duration)}
-                      </p>
-                    </div>
-                    <div className="bg-white p-3 rounded-lg border border-emerald-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <MapPin size={14} className="text-emerald-600" />
-                        <span className="text-xs text-slate-500">طول مسیر</span>
-                      </div>
-                      <p className="text-sm font-bold text-slate-800">
-                        {searchResult.data!.nodes.length} فعالیت
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ستون سمت راست: نتایج */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-full">
-              {searchResult?.found && searchResult.data ? (
-                <div className="h-full overflow-y-auto">
-                  <div className="p-6 border-b border-slate-100">
-                    <h2 className="text-xl font-bold text-slate-800 mb-2">نتایج تحلیل پرونده</h2>
-                    <p className="text-slate-500 text-sm">
-                      جزئیات کامل پرونده شناسه {searchResult.data.case_id}
-                    </p>
-                  </div>
-
-                  <div className="p-6">
-                    {/* آکاردئون‌ها */}
-                    <Accordion
-                      keepContentMounted
-                      defaultExpandedKeys={['1', '2']}
-                      variant="splitted"
-                      className="px-0 gap-4"
-                      itemClasses={{
-                        base: 'group bg-slate-50 border border-slate-100 rounded-xl px-0 data-[open=true]:border-blue-200',
-                        title: 'text-sm font-semibold text-slate-800',
-                        trigger: 'py-4 px-6 data-[hover=true]:bg-slate-100',
-                        indicator: 'text-slate-500',
-                        content: 'pb-6 px-6',
-                      }}
-                    >
-                      {/* بخش ۱: تحلیل آماری */}
-                      <AccordionItem
-                        key="1"
-                        aria-label="Charts"
-                        title={
-                          <div className="flex items-center gap-3">
-                            <Activity size={18} className="text-indigo-600" />
-                            <span>تحلیل آماری و نمودارها</span>
-                          </div>
-                        }
-                      >
-                        <div className="flex flex-col gap-4">
-                          {renderPerformanceStats()}
-
-                          <div className="h-[400px] w-full border border-slate-200 rounded-xl overflow-hidden bg-white">
-                            <CaseDistributionCharts
-                              searchResult={searchResult}
-                            />
-                          </div>
-                        </div>
-                      </AccordionItem>
-
-                      {/* بخش ۲: مسیر زمانی */}
-                      <AccordionItem
-                        key="2"
-                        aria-label="Timeline"
-                        title={
-                          <div className="flex items-center gap-3">
-                            <ListStart size={18} className="text-slate-600" />
-                            <span>مسیر زمانی پرونده</span>
-                          </div>
-                        }
-                      >
-                        <div className="pt-2">
-                          <div className="relative pl-4 pr-6 py-4 border-r-2 border-slate-200 mr-4 space-y-1">
-                            {searchResult.data.nodes.map((node, index) => {
-                              const isLast = index === searchResult.data!.nodes.length - 1;
-                              const isFirst = index === 0;
-                              const duration = !isLast ? searchResult.data!.edge_durations[index] : null;
-
-                              return (
-                                <div key={index} className="relative pb-6 last:pb-0">
-                                  {!isLast && (
-                                    <div className="absolute top-5 bottom-0 right-[9px] w-0.5 bg-slate-300" />
-                                  )}
-
-                                  <div className="flex items-start gap-4 relative z-10">
-                                    <div
-                                      className={`w-5 h-5 rounded-full border-4 shrink-0 bg-white mt-1 z-20 transition-colors ${
-                                        isFirst
-                                          ? 'border-emerald-600 ring-3 ring-emerald-100'
-                                          : isLast
-                                          ? 'border-rose-600 ring-3 ring-rose-100'
-                                          : 'border-blue-400 ring-2 ring-blue-50'
-                                      }`}
-                                    />
-
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-3 flex-wrap">
-                                        <span
-                                          className={`text-sm leading-tight ${
-                                            isFirst || isLast
-                                              ? 'font-bold text-slate-900'
-                                              : 'font-medium text-slate-700'
-                                          }`}
-                                        >
-                                          {node}
-                                        </span>
-                                        {isFirst && (
-                                          <span className="text-xs px-2 py-1 bg-emerald-100 text-emerald-800 rounded-md font-semibold">
-                                            شروع
-                                          </span>
-                                        )}
-                                        {isLast && (
-                                          <span className="text-xs px-2 py-1 bg-rose-100 text-rose-800 rounded-md font-semibold">
-                                            پایان
-                                          </span>
-                                        )}
-                                      </div>
-
-                                      {!isLast && duration !== undefined && (
-                                        <div className="flex justify-start mt-3">
-                                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-700 font-medium shadow-sm">
-                                            <ArrowDown size={12} />
-                                            {formatDuration(duration as number)}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </AccordionItem>
-                    </Accordion>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] gap-6 p-8 text-center">
-                  {/* <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center">
-                    {searchAllData ? (
-                      <History size={40} className="text-slate-400" />
-                    ) : (
-                      <FileText size={40} className="text-slate-400" />
-                    )}
-                  </div> */}
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-700 mb-2">آماده جستجو</h3>
-                    <p className="text-slate-500 max-w-md mx-auto">
-                      شماره پرونده مورد نظر را در بخش سمت چپ وارد کنید تا مسیر دقیق و تحلیل زمانی آن نمایش داده شود.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+            }
+            classNames={{
+              inputWrapper: "bg-white border border-slate-200 shadow-sm hover:bg-slate-50 focus-within:bg-white focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all",
+              input: "text-right font-medium text-slate-700",
+            }}
+            className="flex-1"
+          />
+          <Button
+            isIconOnly
+            size="sm"
+            color="primary"
+            variant="shadow"
+            className="rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/30"
+            isLoading={isLoading}
+            onPress={submit}
+          >
+            {!isLoading && <Search size={18} />}
+          </Button>
         </div>
+
+        {/* Status Indicator Card */}
+        {searchResult?.found && searchResult.data ? (
+          <div className="flex items-center justify-between gap-2">
+             <div className="flex-1 bg-white border border-slate-200 rounded-xl p-2 shadow-sm flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500 shrink-0">
+                  <SquareActivity size={18} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] text-slate-400 font-bold">فعالیت ها</span>
+                  <span className="text-xs font-bold text-slate-800 truncate">{searchResult.data!.nodes.length}</span>
+                </div>
+             </div>
+             
+             <div className="text-emerald-400">
+               <CheckCircle2 size={16} />
+             </div>
+
+             <div className="flex-1 bg-white border border-slate-200 rounded-xl p-2 shadow-sm flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500 shrink-0">
+                  <Timer size={18} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] text-slate-400 font-bold">مدت زمان</span>
+                  <span className="text-xs font-bold text-slate-800 truncate">
+                    {formatDuration(searchResult.data.total_duration)}
+                  </span>
+                </div>
+             </div>
+          </div>
+        ) : error ? (
+           <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 flex items-center gap-2 text-xs font-medium animate-appearance-in">
+              <XCircle size={16} className="shrink-0" />
+              <span>{error}</span>
+           </div>
+        ) : (
+          <div className="py-2 flex justify-center">
+            <span className="text-[10px] text-slate-400 font-medium bg-slate-100 px-3 py-1 rounded-full">
+              منتظر ورود شناسه
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* --- Custom Tabs --- */}
+      <div className="grid grid-cols-2 p-1 bg-slate-100/80 rounded-xl shrink-0 gap-1">
+        <button
+          onClick={() => setActiveTab("Timeline")}
+          disabled={!searchResult?.found}
+          className={`
+            flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all
+            ${activeTab === "Timeline" 
+              ? "bg-white text-slate-800 shadow-sm" 
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+            }
+            ${!searchResult?.found ? "opacity-50 cursor-not-allowed" : ""}
+          `}
+        >
+          <LayoutList size={14} />
+          مسیر زمانی
+        </button>
+        <button
+          onClick={() => setActiveTab("Charts")}
+          disabled={!searchResult?.found}
+          className={`
+            flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all
+            ${activeTab === "Charts" 
+              ? "bg-white text-slate-800 shadow-sm" 
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+            }
+            ${!searchResult?.found ? "opacity-50 cursor-not-allowed" : ""}
+          `}
+        >
+          <BarChart3 size={14} />
+          تحلیل و نمودار
+        </button>
+      </div>
+
+      {/* --- Content Area --- */}
+      <div className="flex-1 min-h-0 relative overflow-hidden bg-white rounded-xl border border-slate-100">
+        
+        {/* Loading Overlay */}
+        {isLoading && (
+          <div className="absolute inset-0 z-20 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs font-bold text-slate-600">در حال جستجو...</span>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!searchResult?.found && !isLoading && !error && (
+          <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center opacity-70">
+            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center border border-slate-100">
+              <History size={32} className="text-slate-300" />
+            </div>
+            <p className="text-slate-500 text-sm font-bold">جستجوی پرونده</p>
+            <p className="text-slate-400 text-xs max-w-[220px] leading-5">
+              برای مشاهده مسیر دقیق و تحلیل آماری، شناسه پرونده را در کادر بالا وارد کنید.
+            </p>
+          </div>
+        )}
+
+        {/* تغییر کلیدی اینجاست: استفاده از display:none به جای شرطی رندر کردن */}
+        {/* 1. Timeline Section */}
+        {searchResult?.found && searchResult.data && (
+           <div className={activeTab === "Timeline" ? "h-full" : "hidden"}>
+             <ScrollShadow className="h-full p-3">
+               <div className="flex flex-col relative pl-4 pr-2">
+                  <div className="absolute right-[19px] top-4 bottom-4 w-0.5 bg-slate-100" />
+                  
+                  {searchResult.data.nodes.map((node, index) => {
+                    const isLast = index === searchResult.data!.nodes.length - 1;
+                    const isFirst = index === 0;
+                    const duration = !isLast ? searchResult.data!.edge_durations[index] : null;
+
+                    return (
+                      <div key={index} className="relative mb-4 last:mb-0 group">
+                        <div className="flex items-start gap-3 relative z-10">
+                          <div className={`
+                            w-4 h-4 rounded-full border-[3px] shrink-0 mt-3 transition-all duration-300 z-20 bg-white
+                            ${isFirst 
+                              ? 'border-emerald-500 ring-4 ring-emerald-50 shadow-sm' 
+                              : isLast 
+                              ? 'border-rose-500 ring-4 ring-rose-50 shadow-sm' 
+                              : 'border-slate-300 group-hover:border-blue-400 group-hover:ring-4 group-hover:ring-blue-50'
+                            }
+                          `} />
+                          <div className={`
+                            flex-1 p-3 rounded-xl border transition-all duration-200
+                            ${isFirst 
+                              ? "bg-emerald-50/50 border-emerald-100" 
+                              : isLast 
+                              ? "bg-rose-50/50 border-rose-100" 
+                              : "bg-white border-slate-100 hover:border-blue-200 hover:shadow-sm"
+                            }
+                          `}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className={`text-xs font-bold ${isFirst ? 'text-emerald-800' : isLast ? 'text-rose-800' : 'text-slate-700'}`}>
+                                {node}
+                              </span>
+                              {isFirst && <Chip size="sm" color="success" variant="flat" className="h-4 text-[9px] px-1">شروع</Chip>}
+                              {isLast && <Chip size="sm" color="danger" variant="flat" className="h-4 text-[9px] px-1">پایان</Chip>}
+                            </div>
+                            {!isLast && duration !== undefined && (
+                              <div className="flex items-center gap-1 mt-2 text-[10px] text-slate-500 bg-slate-50 px-2 py-1 rounded-lg w-fit border border-slate-100">
+                                 <ArrowDown size={10} className="text-slate-400" />
+                                 <span>{formatDuration(duration as number)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+               </div>
+             </ScrollShadow>
+           </div>
+        )}
+
+        {/* 2. Charts Section - Always mounted but toggled via class */}
+        {searchResult?.found && (
+          <div className={activeTab === "Charts" ? "h-full" : "hidden"}>
+            <ScrollShadow className="h-full p-3">
+               {renderPerformanceStats()}
+               <div className="bg-white">
+                  <CaseDistributionCharts searchResult={searchResult} />
+               </div>
+            </ScrollShadow>
+          </div>
+        )}
       </div>
     </div>
   );
