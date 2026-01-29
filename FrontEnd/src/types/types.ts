@@ -96,6 +96,8 @@ export interface ExtendedPath extends Path {
   _specificEdgeDurations?: Record<string, number>;
   /** Total duration for each edge keyed by edge ID (from Total_Timings) */
   _specificTotalDurations?: Record<string, number>;
+  /** Number of times each edge appears in the path keyed by edge ID */
+  _specificEdgeCounts?: Record<string, number>;
 }
 
 // ============================================================================

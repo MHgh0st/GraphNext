@@ -93,6 +93,7 @@ export default function SearchCaseIdsRoute() {
       edges: pathForGraph.edges,
       edgeDurations: pathForGraph._specificEdgeDurations || {},
       edgeTotalDurations: pathForGraph._specificTotalDurations || {},
+      edgeCounts: pathForGraph._specificEdgeCounts || {},
       frequency: pathForGraph._frequency || 1,
     };
 
@@ -169,6 +170,12 @@ export default function SearchCaseIdsRoute() {
           specificTotalDurations[edgeId] = stat.sum;
         });
 
+        // NEW: Edge counts for tooltip display
+        const specificEdgeCounts: Record<string, number> = {};
+        Object.keys(edgeStats).forEach((edgeId) => {
+          specificEdgeCounts[edgeId] = edgeStats[edgeId].count;
+        });
+
         const pathForGraph: ExtendedPath = {
           nodes: response.data.nodes,
           edges: Object.keys(specificDurations),
@@ -181,6 +188,7 @@ export default function SearchCaseIdsRoute() {
           _variantTimings: response.data.edge_durations,
           _specificEdgeDurations: specificDurations,
           _specificTotalDurations: specificTotalDurations,
+          _specificEdgeCounts: specificEdgeCounts,
         };
         
         displayPathInGraph(pathForGraph);

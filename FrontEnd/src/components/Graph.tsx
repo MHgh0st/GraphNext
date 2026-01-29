@@ -23,7 +23,7 @@ import EdgeTooltip from "./graph/ui/EdgeTooltip";
 import CustomNode from "./graph/ui/CustomNode";
 import { formatDuration } from "../utils/formatDuration";
 import type { ExtendedPath } from "../types/types";
-import { useGraphStore } from "../store/useGraphStore";
+import { useGraphStore, calculateEdgeOverride } from "../store/useGraphStore";
 import { useAppStore } from "../hooks/useAppStore";
 
 // ============================================================================
@@ -82,94 +82,6 @@ const NODE_TYPES: NodeTypes = {
 const EDGE_LABEL_ZOOM_THRESHOLD = 0.6;
 
 // ============================================================================
-// HELPERS
-// ============================================================================
-
-function calculateEdgeOverride(
-  edge: Edge,
-  activePath: ExtendedPath | null,
-  isHighlighted: boolean
-): { displayLabel: string; tooltipOverride?: EdgeTooltipOverride } | null {
-  if (!activePath || !isHighlighted) return null;
-
-  const pathEdges = activePath.edges || [];
-  const edgeIndices: number[] = [];
-
-  pathEdges.forEach((id: string, idx: number) => {
-    if (id === edge.id) edgeIndices.push(idx);
-  });
-
-  if (
-    activePath._specificEdgeDurations &&
-    activePath._specificEdgeDurations[edge.id] !== undefined
-  ) {
-    const avgDuration = activePath._specificEdgeDurations[edge.id];
-    const displayLabel = formatDuration(avgDuration);
-    const tooltipMeanTime = `${displayLabel} (میانگین)`;
-
-    const count = activePath._fullPathNodes
-      ? activePath._fullPathNodes.filter((_, idx) => {
-          if (idx >= activePath._fullPathNodes!.length - 1) return false;
-          const src = activePath._fullPathNodes![idx];
-          const trg = activePath._fullPathNodes![idx + 1];
-          return `${src}->${trg}` === edge.id;
-        }).length
-      : 1;
-
-    return {
-      displayLabel,
-      tooltipOverride: {
-        label: activePath._frequency,
-        meanTime: tooltipMeanTime,
-        totalTime: formatDuration(activePath._specificTotalDurations?.[edge.id] ?? avgDuration),
-        rawDuration: avgDuration,
-      },
-    };
-  }
-
-  if (
-    edgeIndices.length > 0 &&
-    activePath._variantTimings &&
-    activePath._variantTimings.length > 0 &&
-    typeof activePath._startIndex === "number"
-  ) {
-    let totalDuration = 0;
-    let count = 0;
-
-    edgeIndices.forEach((idx) => {
-      const timeIndex = activePath._startIndex! + idx;
-      const start = activePath._variantTimings![timeIndex];
-      const end = activePath._variantTimings![timeIndex + 1];
-
-      if (typeof start === "number" && typeof end === "number") {
-        totalDuration += Math.max(0, end - start);
-        count++;
-      }
-    });
-
-    if (count > 0) {
-      const displayLabel = formatDuration(totalDuration);
-      const tooltipMeanTime =
-        count > 1 ? `${displayLabel} (مجموع ${count} بار عبور)` : displayLabel;
-      const frequency = activePath._frequency || 0;
-      const tooltipTotalTime = formatDuration(totalDuration * frequency);
-
-      return {
-        displayLabel,
-        tooltipOverride: {
-          label: frequency,
-          meanTime: tooltipMeanTime,
-          totalTime: tooltipTotalTime,
-          rawDuration: totalDuration,
-        },
-      };
-    }
-  }
-
-  return null;
-}
-
-// ============================================================================
 // COMPONENT
 // ============================================================================
 
@@ -204,6 +116,8 @@ function Graph({
     closeNodeTooltip,
     closeEdgeTooltip,
     onPaneClick,
+    injectGhostElements,
+    activePath,
   } = useGraphStore();
 
   // Get state from useAppStore
@@ -220,141 +134,16 @@ function Graph({
     selectedNodeIds: filteredNodeIds, // Selected nodes from Filters tab
   } = useAppStore();
 
-  const activePath = useMemo((): ExtendedPath | null => {
-    if (selectedPathIndex !== null && foundPaths?.[selectedPathIndex]) {
-      return foundPaths[selectedPathIndex] as ExtendedPath;
-    }
-    return null;
-  }, [selectedPathIndex, foundPaths]);
-
   const selectedNodeId = useMemo(() => {
     return layoutedNodes.find((n) => n.selected)?.id;
   }, [layoutedNodes]);
 
   // ============================================================================
-  // EFFECT: Inject Nodes (Smart Mode)
+  // EFFECT: Inject Ghost Elements via Store Action
   // ============================================================================
   useEffect(() => {
-    if (activeSideBar !== "SearchCaseIds" || !activePath?.nodes) {
-      setLayoutedNodes((prev) => {
-        const hasGhost = prev.some(n => (n.data as CustomNodeData).isGhost);
-        if (!hasGhost) return prev;
-        return prev.filter((n) => !(n.data as CustomNodeData).isGhost);
-      });
-      return;
-    }
-
-    setLayoutedNodes((prevNodes) => {
-      const cleanNodes = prevNodes.filter((n) => !(n.data as CustomNodeData).isGhost);
-      const existingNodeIds = new Set(cleanNodes.map((n) => n.id));
-      
-      const missingNodeIds = activePath.nodes.filter((id) => !existingNodeIds.has(id));
-      
-      if (missingNodeIds.length === 0) {
-         if (prevNodes.length === cleanNodes.length) return prevNodes;
-         return cleanNodes;
-      }
-
-      // --- تغییر کلیدی: تشخیص بر اساس allNodes اصلی ---
-      // اگر allNodes خالی است، یعنی هیچ گراف زمینه‌ای لود نشده است.
-      const isPureSearchMode = allNodes.length === 0;
-
-      const newNodes = missingNodeIds.map((id, index) => ({
-        id: id,
-        type: "activity",
-        position: { x: 50 + index * 200, y: -150 },
-        data: { 
-            label: id, 
-            isGhost: !isPureSearchMode // فقط اگر گراف زمینه داریم، این‌ها گوست باشند
-        } as CustomNodeData,
-        style: isPureSearchMode 
-            ? {} 
-            : {
-                width: "fit-content",
-                border: "2px dashed #f59e0b",
-                backgroundColor: "#fffbeb",
-                color: "#b45309",
-            },
-        draggable: true,
-      } as Node));
-
-      return [...cleanNodes, ...newNodes];
-    });
-  }, [activePath, activeSideBar, setLayoutedNodes, allNodes.length]); // وابستگی به allNodes.length
-
-  // ============================================================================
-  // EFFECT: Inject Edges (Smart Mode)
-  // ============================================================================
-  useEffect(() => {
-    if (activeSideBar !== "SearchCaseIds" || !activePath?.nodes) {
-      setLayoutedEdges((prev) => {
-          const hasGhost = prev.some(e => (e.data as CustomEdgeData).isGhost);
-          if(!hasGhost) return prev;
-          return prev.filter((e) => !(e.data as CustomEdgeData).isGhost);
-      });
-      return;
-    }
-
-    setLayoutedEdges((prevEdges) => {
-      const cleanEdges = prevEdges.filter((e) => !(e.data as CustomEdgeData).isGhost);
-      const existingEdgeIds = new Set(cleanEdges.map((e) => e.id));
-      
-      // --- تغییر کلیدی: تشخیص بر اساس allEdges اصلی ---
-      const isPureSearchMode = allEdges.length === 0;
-      
-      const newEdges: Edge[] = [];
-      const pathNodes = activePath.nodes;
-
-      for (let i = 0; i < pathNodes.length - 1; i++) {
-        const src = pathNodes[i];
-        const trg = pathNodes[i + 1];
-        const edgeId = `${src}->${trg}`;
-
-        if (!existingEdgeIds.has(edgeId)) {
-          // Get duration data from activePath
-          const edgeDuration = activePath._specificEdgeDurations?.[edgeId];
-          const edgeTotalDuration = activePath._specificTotalDurations?.[edgeId] ?? edgeDuration;
-          const pathFrequency = activePath._frequency || 1;
-          const label = typeof edgeDuration === 'number' ? formatDuration(edgeDuration) : "";
-          
-          newEdges.push({
-            id: edgeId,
-            source: src,
-            target: trg,
-            type: "default",
-            animated: true,
-            label: label,
-            style: isPureSearchMode 
-                ? { strokeWidth: 1.5, stroke: "#b1b1b7" } 
-                : {
-                    stroke: "#f59e0b",
-                    strokeDasharray: "5, 5",
-                    strokeWidth: 2,
-                    opacity: 1,
-                },
-            data: { 
-                isGhost: !isPureSearchMode,
-                // Add duration data for tooltip and chart
-                pathDuration: edgeDuration,
-                pathFrequency: pathFrequency,
-                Tooltip_Mean_Time: typeof edgeDuration === 'number' ? formatDuration(edgeDuration) : undefined,
-                Tooltip_Total_Time: typeof edgeTotalDuration === 'number' ? formatDuration(edgeTotalDuration) : undefined,
-                Case_Count: pathFrequency,
-            } as CustomEdgeData,
-          } as Edge);
-        }
-      }
-      console.log("newEdges", newEdges);
-
-      if (newEdges.length === 0) {
-         if ( prevEdges.length === cleanEdges.length) return prevEdges;
-         return cleanEdges;
-      }
-
-      return [...cleanEdges, ...newEdges];
-    });
-
-  }, [activePath, activeSideBar, setLayoutedEdges, allEdges.length]);
+    injectGhostElements(activePath, activeSideBar);
+  }, [activePath, activeSideBar, injectGhostElements]);
 
 
 
@@ -488,7 +277,7 @@ function Graph({
         }
       }
 
-      const override = calculateEdgeOverride(edge, activePath, isPathHighlighted);
+      const override = isPathHighlighted ? calculateEdgeOverride(edge, activePath) : null;
       const displayLabel = override?.displayLabel || (edge.label as string);
       const tooltipOverride = override?.tooltipOverride;
       
@@ -499,14 +288,14 @@ function Graph({
       let strokeColor = edge.style?.stroke;
       let strokeDasharray = edge.style?.strokeDasharray;
       let strokeWidth = edge.style?.strokeWidth;
-      let animated = edge.animated;
+      // let animated = edge.animated;
 
       // Only ghost edges (edges not in base graph) get distinctive styling
       if (isGhost) {
         strokeColor = isTooltipActive ? "#FFC107" : "#f59e0b"; // Amber
         strokeDasharray = "5, 5"; // Dashed
         strokeWidth = 2.5;
-        animated = true;
+        // animated = true;
       }
 
       return {
@@ -532,7 +321,7 @@ function Graph({
           strokeWidth: strokeWidth,
           transition: "all 0.4s ease",
         },
-        animated: animated,
+        animated: false,
         focusable: true,
       };
     });

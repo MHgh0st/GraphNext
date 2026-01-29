@@ -173,7 +173,7 @@ export const useGraphLayout = (
           source: source,
           target: target,
           type: "default",
-          animated: true, // برای مسیر پرونده انیمیشن جذاب است
+          animated: false, // برای مسیر پرونده انیمیشن جذاب است
           label: "",
           style: {
             stroke: "#f59e0b",

@@ -28,6 +28,8 @@ export interface ActivePathInfo {
   edgeDurations?: Record<string, number>;
   /** Edge total durations keyed by edge ID (from Total_Timings) in seconds */
   edgeTotalDurations?: Record<string, number>;
+  /** Number of times each edge appears in the path keyed by edge ID */
+  edgeCounts?: Record<string, number>;
   /** Frequency of this path */
   frequency?: number;
 }
@@ -117,6 +119,10 @@ interface GraphActions {
   setIsNodeCardVisible: (visible: boolean) => void;
   setIsEdgeCardVisible: (visible: boolean) => void;
   
+  // Ghost Element Actions
+  injectGhostElements: (activePath: ExtendedPath | null, activeSideBar: string) => void;
+  clearGhostElements: () => void;
+  
   // Initialization
   initializeWorker: () => void;
   cleanupWorker: () => void;
@@ -171,18 +177,18 @@ export function calculateEdgeOverride(
   ) {
     const avgDuration = activePath._specificEdgeDurations[edge.id];
     const displayLabel = formatDuration(avgDuration);
-    const tooltipMeanTime = `${displayLabel} (میانگین)`;
     
-    // Use path frequency instead of hardcoded 1
-    const pathFrequency = activePath._frequency || activePath.frequency || 1;
+    // Use edge-specific count if available, otherwise fallback to path frequency
+    const edgeCount = activePath._specificEdgeCounts?.[edge.id] || activePath._frequency || 1;
+    const tooltipMeanTime = `${displayLabel} (میانگین)`;
     
     // Use Total_Timings if available, otherwise fall back to avgDuration
     const totalDuration = (activePath as any)._specificTotalDurations?.[edge.id] ?? avgDuration;
-    console.log("avgDuration: ", avgDuration)
+    console.log("edgeCount: ", edgeCount, "for edge:", edge.id);
     return {
       displayLabel,
       tooltipOverride: {
-        label: pathFrequency,
+        label: edgeCount,
         meanTime: tooltipMeanTime,
         totalTime: formatDuration(totalDuration),
         rawDuration: avgDuration,
@@ -642,7 +648,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
           if (activePathInfo?.edgeDurations && activePathInfo.edgeDurations[edge.id] !== undefined) {
             const avgDuration = activePathInfo.edgeDurations[edge.id];
             const totalDuration = activePathInfo.edgeTotalDurations?.[edge.id] ?? avgDuration;
-            const pathFrequency = activePathInfo.frequency || 1;
+            const edgeCount = activePathInfo.edgeCounts?.[edge.id] || 1;
             const label = formatDuration(avgDuration);
             return {
               ...edge,
@@ -650,10 +656,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
               data: {
                 ...edge.data,
                 pathDuration: avgDuration,
-                pathFrequency,
+                pathFrequency: edgeCount,
                 Tooltip_Mean_Time: formatDuration(avgDuration),
                 Tooltip_Total_Time: formatDuration(totalDuration),
-                Case_Count: pathFrequency,
+                Case_Count: edgeCount,
               },
             };
           }
@@ -670,17 +676,17 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         if (activePathInfo?.edgeDurations && activePathInfo.edgeDurations[edge.id] !== undefined) {
           const avgDuration = activePathInfo.edgeDurations[edge.id];
           const totalDuration = activePathInfo.edgeTotalDurations?.[edge.id] ?? avgDuration;
-          const pathFrequency = activePathInfo.frequency || 1;
+          const edgeCount = activePathInfo.edgeCounts?.[edge.id] || 1;
           
           label = formatDuration(avgDuration);
           edgeData = {
             ...edgeData,
             pathDuration: avgDuration,
-            pathFrequency,
+            pathFrequency: edgeCount,
             // Override tooltip info with path-specific data
             Tooltip_Mean_Time: formatDuration(avgDuration),
             Tooltip_Total_Time: formatDuration(totalDuration),
-            Case_Count: pathFrequency,
+            Case_Count: edgeCount,
           } as typeof edgeData;
           
         }
@@ -1058,6 +1064,120 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   setIsNodeCardVisible: (visible) => set({ isNodeCardVisible: visible }),
   setIsEdgeCardVisible: (visible) => set({ isEdgeCardVisible: visible }),
+
+  // ============================================================================
+  // GHOST ELEMENT ACTIONS
+  // ============================================================================
+
+  clearGhostElements: () => {
+    const { layoutedNodes, layoutedEdges } = get();
+    
+    const hasGhostNodes = layoutedNodes.some((n) => (n.data as any)?.isGhost);
+    const hasGhostEdges = layoutedEdges.some((e) => (e.data as any)?.isGhost);
+    
+    if (hasGhostNodes) {
+      set({ layoutedNodes: layoutedNodes.filter((n) => !(n.data as any)?.isGhost) });
+    }
+    if (hasGhostEdges) {
+      set({ layoutedEdges: layoutedEdges.filter((e) => !(e.data as any)?.isGhost) });
+    }
+  },
+
+  injectGhostElements: (activePath, activeSideBar) => {
+    const { allNodes, allEdges, layoutedNodes, layoutedEdges, clearGhostElements } = get();
+    
+    // Only process for SearchCaseIds tab with active path
+    if (activeSideBar !== "SearchCaseIds" || !activePath?.nodes) {
+      clearGhostElements();
+      return;
+    }
+
+    // --- Inject Ghost Nodes ---
+    const cleanNodes = layoutedNodes.filter((n) => !(n.data as any)?.isGhost);
+    const existingNodeIds = new Set(cleanNodes.map((n) => n.id));
+    const missingNodeIds = activePath.nodes.filter((id) => !existingNodeIds.has(id));
+    
+    // Determine if we're in pure search mode (no base graph loaded)
+    const isPureSearchMode = allNodes.length === 0;
+    
+    let newNodes: Node[] = [];
+    if (missingNodeIds.length > 0) {
+      newNodes = missingNodeIds.map((id, index) => ({
+        id: id,
+        type: "activity",
+        position: { x: 50 + index * 200, y: -150 },
+        data: { 
+          label: id, 
+          isGhost: !isPureSearchMode // Only ghost if we have a base graph
+        },
+        style: isPureSearchMode 
+          ? {} 
+          : {
+              width: "fit-content",
+              border: "2px dashed #f59e0b",
+              backgroundColor: "#fffbeb",
+              color: "#b45309",
+            },
+        draggable: true,
+      } as Node));
+    }
+
+    // --- Inject Ghost Edges ---
+    const cleanEdges = layoutedEdges.filter((e) => !(e.data as any)?.isGhost);
+    const existingEdgeIds = new Set(cleanEdges.map((e) => e.id));
+    const pathNodes = activePath.nodes;
+    
+    const newEdges: Edge[] = [];
+    for (let i = 0; i < pathNodes.length - 1; i++) {
+      const src = pathNodes[i];
+      const trg = pathNodes[i + 1];
+      const edgeId = `${src}->${trg}`;
+
+      if (!existingEdgeIds.has(edgeId)) {
+        const edgeDuration = activePath._specificEdgeDurations?.[edgeId];
+        const edgeTotalDuration = activePath._specificTotalDurations?.[edgeId] ?? edgeDuration;
+        const edgeCount = activePath._specificEdgeCounts?.[edgeId] || 1;
+        const label = typeof edgeDuration === 'number' ? formatDuration(edgeDuration) : "";
+        
+        newEdges.push({
+          id: edgeId,
+          source: src,
+          target: trg,
+          type: "default",
+          animated: false,
+          label: label,
+          style: isPureSearchMode 
+            ? { strokeWidth: 1.5, stroke: "#b1b1b7" } 
+            : {
+                stroke: "#f59e0b",
+                strokeDasharray: "5, 5",
+                strokeWidth: 2,
+                opacity: 1,
+              },
+          data: { 
+            isGhost: !isPureSearchMode,
+            pathDuration: edgeDuration,
+            pathFrequency: edgeCount,
+            Tooltip_Mean_Time: typeof edgeDuration === 'number' ? formatDuration(edgeDuration) : undefined,
+            Tooltip_Total_Time: typeof edgeTotalDuration === 'number' ? formatDuration(edgeTotalDuration) : undefined,
+            Case_Count: edgeCount,
+          },
+        } as Edge);
+      }
+    }
+
+    // Apply changes if needed
+    const finalNodes = newNodes.length > 0 ? [...cleanNodes, ...newNodes] : cleanNodes;
+    const finalEdges = newEdges.length > 0 ? [...cleanEdges, ...newEdges] : cleanEdges;
+    
+    // Only update if there are actual changes
+    if (finalNodes.length !== layoutedNodes.length || newNodes.length > 0) {
+      set({ layoutedNodes: finalNodes });
+    }
+    if (finalEdges.length !== layoutedEdges.length || newEdges.length > 0) {
+      set({ layoutedEdges: finalEdges });
+    }
+  },
 }));
 
 // Selector hooks for optimized subscriptions
