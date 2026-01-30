@@ -184,7 +184,6 @@ export function calculateEdgeOverride(
     
     // Use Total_Timings if available, otherwise fall back to avgDuration
     const totalDuration = (activePath as any)._specificTotalDurations?.[edge.id] ?? avgDuration;
-    console.log("edgeCount: ", edgeCount, "for edge:", edge.id);
     return {
       displayLabel,
       tooltipOverride: {
@@ -485,6 +484,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     if (activePathInfo?.nodes && activePathInfo.nodes.length > 0) {
       const existingNodeIds = new Set(nodesToLayout.map((n) => n.id));
       const ghostNodeIds = activePathInfo.nodes.filter((id) => !existingNodeIds.has(id));
+      
+      console.log('[GHOST DEBUG] activePathInfo.nodes:', activePathInfo.nodes);
+      console.log('[GHOST DEBUG] existingNodeIds (nodes in graph):', Array.from(existingNodeIds));
+      console.log('[GHOST DEBUG] ghostNodeIds (should be added):', ghostNodeIds);
 
       const ghostNodes = ghostNodeIds.map((id: string) => ({
         id: id,
@@ -501,6 +504,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       } as Node));
 
       nodesToLayout = [...nodesToLayout, ...ghostNodes];
+      console.log('[GHOST DEBUG] final nodes count:', nodesToLayout.length);
     }
 
 
@@ -508,6 +512,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     if (activePathInfo?.edges && activePathInfo.edges.length > 0) {
       const existingEdgeIds = new Set(edgesToLayout.map((e) => e.id));
       const ghostEdgeIds = activePathInfo.edges.filter((id) => !existingEdgeIds.has(id));
+      
+      console.log('[GHOST DEBUG] activePathInfo.edges:', activePathInfo.edges);
+      console.log('[GHOST DEBUG] existingEdgeIds:', Array.from(existingEdgeIds));
+      console.log('[GHOST DEBUG] ghostEdgeIds (should be added):', ghostEdgeIds);
 
       const ghostEdges = ghostEdgeIds.map((edgeId: string) => {
         const [source, target] = edgeId.split("->") as [string, string];
@@ -528,7 +536,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       });
 
       edgesToLayout = [...edgesToLayout, ...ghostEdges];
-      console.log('final edges: ',edgesToLayout.length)
+      console.log('[GHOST DEBUG] final edges count:', edgesToLayout.length);
     }
 
     // Add Search Case Nodes (non-ghosted)
@@ -616,8 +624,15 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         children: elkNodes,
         edges: elkEdges,
       };
+      
+      console.log('[ELK DEBUG] elkNodes count:', elkNodes.length);
+      console.log('[ELK DEBUG] elkEdges count:', elkEdges.length);
+      console.log('[ELK DEBUG] elkEdges:', elkEdges);
 
       const layoutedGraph: any = await elk.layout(graphToLayout);
+      
+      console.log('[ELK DEBUG] layoutedGraph.children count:', layoutedGraph.children?.length);
+      console.log('[ELK DEBUG] layoutedGraph.edges count:', layoutedGraph.edges?.length);
 
       const newLayoutedNodes = nodesToLayout.map((node) => {
         const elkNode = layoutedGraph.children.find((n: any) => n.id === node.id);
@@ -707,6 +722,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         layoutedEdges: coloredEdges,
         isLayoutLoading: false,
       });
+      
+      console.log('[GHOST DEBUG] FINAL layoutedNodes count:', newLayoutedNodes.length);
+      console.log('[GHOST DEBUG] FINAL layoutedEdges count:', coloredEdges.length);
+      console.log('[GHOST DEBUG] FINAL layoutedNodes ids:', newLayoutedNodes.map(n => n.id));
 
       // Update edge lookup map
       get().updateEdgeLookupMap();
@@ -1086,8 +1105,9 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   injectGhostElements: (activePath, activeSideBar) => {
     const { allNodes, allEdges, layoutedNodes, layoutedEdges, clearGhostElements } = get();
     
-    // Only process for SearchCaseIds tab with active path
-    if (activeSideBar !== "SearchCaseIds" || !activePath?.nodes) {
+    // Only process for SearchCaseIds or Outliers tab with active path
+    const allowedTabs = ["SearchCaseIds", "Outliers"];
+    if (!allowedTabs.includes(activeSideBar) || !activePath?.nodes) {
       clearGhostElements();
       return;
     }
