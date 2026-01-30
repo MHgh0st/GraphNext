@@ -145,6 +145,12 @@ function Graph({
     injectGhostElements(activePath, activeSideBar);
   }, [activePath, activeSideBar, injectGhostElements]);
 
+  // DEBUG: Log when layoutedEdges changes
+  useEffect(() => {
+    console.log('[GRAPH DEBUG] layoutedEdges changed, count:', layoutedEdges.length);
+    console.log('[GRAPH DEBUG] layoutedEdges ghost:', layoutedEdges.filter(e => (e.data as any)?.isGhost).length);
+  }, [layoutedEdges]);
+
 
 
   // ... (بقیه کدها بدون تغییر: onNodesChange, onMoveStart, useMemoها و ...)
@@ -342,6 +348,11 @@ function Graph({
       if (!aSelected && bSelected) return -1;
       return 0;
     });
+    
+    console.log('[RENDER DEBUG] layoutedEdges count:', layoutedEdges.length);
+    console.log('[RENDER DEBUG] processedEdges count:', processedEdges.length);
+    
+    return processedEdges;
   }, [
     layoutedEdges,
     activeTooltipEdgeId,

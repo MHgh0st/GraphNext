@@ -1,8 +1,14 @@
+import dynamic from "next/dynamic";
 import { X, Network, Clock, Hash, Activity, ArrowLeftRight } from "lucide-react";
 import { CardHeader, CardBody } from "@heroui/card";
 import { Button } from "@heroui/button";
-import EdgeDurationChart from "./EdgeDurationChart";
 import type { FilterTypes } from "@/types/types";
+
+// Dynamic import to avoid SSR issues with apexcharts (uses window)
+const EdgeDurationChart = dynamic(() => import("./EdgeDurationChart"), {
+  ssr: false,
+  loading: () => <div className="h-32 bg-slate-50 animate-pulse rounded-lg" />,
+});
 
 interface EdgeTooltipProps {
   edgeTooltipTitle: string | null;
