@@ -31,15 +31,17 @@ services:
   # سرویس فرانت (Next.js)
   frontend:
     build: ./FrontEnd
-    volumes:
-      - ./FrontEnd:/app
-      - /app/node_modules
-      # - /app/.next
+    # volumes:
+    #   - ./FrontEnd:/app
+    #   - /app/node_modules
+    # - /app/.next
     ports:
       - "3000:3000"
     environment:
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    command: /bin/sh -c "bun run build && bun start"
 
 volumes:
   postgres_data:
