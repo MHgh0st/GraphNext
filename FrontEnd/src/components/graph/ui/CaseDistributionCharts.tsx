@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
-import Chart from "react-apexcharts";
+import dynamic from 'next/dynamic';
 import { ApexOptions } from "apexcharts";
 import { Clock, BarChart2, Activity, Maximize2, Minimize2, X } from "lucide-react";
 import { Button } from "@heroui/button";
@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { SearchCaseIdsData, EdgeStatisticsGlobalData } from "@/types/types";
 import { useAppStore } from "@/hooks";
 import api from "@/utils/fetcher";
+const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 interface CaseDistributionChartsProps {
   searchResult: SearchCaseIdsData;
 }
@@ -22,8 +23,10 @@ export default function CaseDistributionCharts({
   const [isLoading, setIsLoading] = useState(true);
   const [activeChart, setActiveChart] = useState<ChartType>('time');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [mounted, setMounted] = useState(false);
     const {filters} = useAppStore()
   useEffect(() => {
+    setMounted(true);
     let isMounted = true;
     const fetchStats = async () => {
       if ( !filters?.dateRange) {
@@ -406,7 +409,7 @@ export default function CaseDistributionCharts({
       </div>
 
       {/* پورتال برای نمایش تمام صفحه */}
-      {createPortal(
+      {mounted && createPortal(
         <AnimatePresence>
             {isExpanded && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-10 pointer-events-none">

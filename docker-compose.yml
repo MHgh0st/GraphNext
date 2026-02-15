@@ -1,7 +1,4 @@
-# version: "3.8"
-
 services:
-  # سرویس دیتابیس
   db:
     image: postgres:15
     volumes:
@@ -10,12 +7,9 @@ services:
       - POSTGRES_DB=graphdb
       - POSTGRES_USER=mhgh0st
       - POSTGRES_PASSWORD=MHgh.982
-    # Note: No external port needed - backend connects via Docker network using hostname 'db'
 
-  # سرویس جنگو (Backend)
   backend:
     build: ./backend
-    # command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./backend:/app
     ports:
@@ -28,20 +22,19 @@ services:
       - DB_PASSWORD=MHgh.982
       - DB_HOST=db
 
-  # سرویس فرانت (Next.js)
   frontend:
     build: ./FrontEnd
-    # volumes:
-    #   - ./FrontEnd:/app
-    #   - /app/node_modules
-    # - /app/.next
+    volumes:
+      - ./FrontEnd:/app
+      - /app/node_modules
+      - /app/.next
     ports:
       - "3000:3000"
     environment:
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
       - NEXT_PUBLIC_API_URL=http://localhost:3001
-    command: /bin/sh -c "bun run build && bun start"
+    command: /bin/sh -c "bun x next build --webpack && bun start"
 
 volumes:
   postgres_data:
