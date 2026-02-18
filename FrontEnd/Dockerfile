@@ -4,11 +4,11 @@ WORKDIR /app
 
 COPY package.json bun.lockb* ./
 
-RUN bun install
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
 
 COPY . .
 
 EXPOSE 3000
 
-# دستور اجرا در حالت توسعه
 CMD ["bun", "dev"]

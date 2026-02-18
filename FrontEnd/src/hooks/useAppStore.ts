@@ -14,7 +14,6 @@
  */
 
 import { create } from "zustand";
-import { Node } from "@xyflow/react";
 import type {
   FilterTypes,
   GraphData,

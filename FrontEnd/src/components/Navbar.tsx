@@ -185,6 +185,17 @@ export default function Navbar({
           offset={10}
           showArrow
           backdrop="transparent"
+          shouldCloseOnInteractOutside={(el) => {
+            // اگر المنت کلیک‌شده داخل یک popover یا overlay دیگر باشد، بسته نشود
+            const isInsideNestedPopover = el.closest(
+              "[data-slot='content'][data-open]," +
+              "[role='dialog']," +
+              "[role='listbox']," +
+              ".heroui-popover-content," +
+              "[data-dismissable-layer]"
+            );
+            return !isInsideNestedPopover;
+          }}
         >
           <PopoverTrigger>
             <Button

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react'; // Activity حذف شد چون در react وجود ندارد
+import { useState, useEffect, useCallback } from 'react'; 
 import { NumberInput } from '@heroui/number-input';
 import { Button } from '@heroui/button';
 import { Chip } from '@heroui/chip';
@@ -20,7 +20,7 @@ import {
 
 import type { SearchCaseIdsData, ExtendedPath } from '@/types/types';
 import { formatDuration } from '@/utils/formatDuration';
-import { api } from '@/utils/fetcher';
+import api from '@/utils/fetcher';
 import { useGraphStore } from '@/store/useGraphStore';
 import CaseDistributionCharts from '@/components/graph/ui/CaseDistributionCharts';
 import { useAppStore } from '@/hooks';

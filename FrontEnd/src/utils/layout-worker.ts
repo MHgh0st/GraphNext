@@ -25,9 +25,7 @@ self.onmessage = async (event: MessageEvent) => {
         startActivities: string[];
         endActivities: string[];
       } = payload;
-      const nodeWidth = 250; // عرض پیش‌فرض
-
-      // ... (تمام کدهای مربوط به scaleEdgeWidth, scaleEdgeColor, ... تا انتها) ...
+      const nodeWidth = 250; 
 
       const minWeight = Math.min(...graphData.map((d) => d.Weight_Value));
       const maxWeight = Math.max(...graphData.map((d) => d.Weight_Value));
@@ -69,7 +67,7 @@ self.onmessage = async (event: MessageEvent) => {
             type: "activity",
           },
           position: { x: 0, y: 0 },
-          style: { width: nodeWidth }, // عرض پیش‌فرض
+          style: { width: nodeWidth }, 
           draggable: true,
         })
       );
@@ -78,14 +76,14 @@ self.onmessage = async (event: MessageEvent) => {
         id: "START_NODE",
         data: { label: "شروع", type: "start" },
         position: { x: 0, y: 0 },
-        style: { width: 150 }, // عرض خاص
+        style: { width: 150 }, 
         draggable: true,
       };
       const endNode: Node = {
         id: "END_NODE",
         data: { label: "پایان", type: "end" },
         position: { x: 0, y: 0 },
-        style: { width: 150 }, // عرض خاص
+        style: { width: 150 }, 
         draggable: true,
       };
 
@@ -130,7 +128,6 @@ self.onmessage = async (event: MessageEvent) => {
 
       allEdges = [...allEdges, ...startEdges, ...endEdges];
 
-      // ... (پایان بخش بدون تغییر) ...
 
       self.postMessage({
         type: "INITIAL_DATA_PROCESSED",
