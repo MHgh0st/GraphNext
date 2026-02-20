@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Providers from "./Providers";
 import SideBar from "@/components/SideBar";
 import "./globals.css";
@@ -17,11 +17,14 @@ import {
   RouteOff,
   FolderSearch,
   Monitor,
+  GitFork,
 } from "lucide-react";
 import Graph from "@/components/Graph";
+import SankeyFlow from "@/components/SankeyFlow";
 import Navbar from "@/components/Navbar";
 import { useAppStore } from "@/hooks/useAppStore";
 import { useGraphStore } from "@/store/useGraphStore";
+import { useRouteBuilderStore } from "@/store/useRouteBuilderStore";
 
 const Vazir = localFont({
   src: "../assets/Fonts/Vazir-FD-WOL.woff2",
@@ -35,6 +38,7 @@ const Vazir = localFont({
 const TAB_TITLES: Record<SidebarTab, string> = {
   Filter: "فیلترهای پیشرفته",
   Routing: "مسیریابی هوشمند",
+  RouteBuilder: "مسیرساز هوشمند",
   Settings: "تنظیمات نمودار",
   Outliers: "تحلیل مسیر های کم تکرار",
   SearchCaseIds: "جستجوی شناسه پرونده",
@@ -44,6 +48,7 @@ const TAB_TITLES: Record<SidebarTab, string> = {
 const TAB_ICONS: Record<SidebarTab, React.ReactNode> = {
   Filter: <SlidersHorizontal className={TAB_THEMES.Filter.iconActiveClass} />,
   Routing: <LineSquiggle className={TAB_THEMES.Routing.iconActiveClass} />,
+  RouteBuilder: <GitFork className={TAB_THEMES.RouteBuilder.iconActiveClass} />,
   Settings: <Settings className={TAB_THEMES.Settings.iconActiveClass} />,
   Outliers: <RouteOff className={TAB_THEMES.Outliers.iconActiveClass} />,
   SearchCaseIds: <FolderSearch className={TAB_THEMES.SearchCaseIds.iconActiveClass} />,
@@ -53,6 +58,7 @@ const TAB_ICONS: Record<SidebarTab, React.ReactNode> = {
 const TAB_ICON_COLORS: Record<SidebarTab, string> = {
   Filter: TAB_THEMES.Filter.activeClass,
   Routing: TAB_THEMES.Routing.activeClass,
+  RouteBuilder: TAB_THEMES.RouteBuilder.activeClass,
   Settings: TAB_THEMES.Settings.activeClass,
   Outliers: TAB_THEMES.Outliers.activeClass,
   SearchCaseIds: TAB_THEMES.SearchCaseIds.activeClass,
@@ -61,6 +67,7 @@ const TAB_ICON_COLORS: Record<SidebarTab, string> = {
 const TAB_TITLE_COLORS: Record<SidebarTab, string> = {
   Filter: TAB_THEMES.Filter.iconActiveClass,
   Routing: TAB_THEMES.Routing.iconActiveClass,
+  RouteBuilder: TAB_THEMES.RouteBuilder.iconActiveClass,
   Settings: TAB_THEMES.Settings.iconActiveClass,
   Outliers: TAB_THEMES.Outliers.iconActiveClass,
   SearchCaseIds: TAB_THEMES.SearchCaseIds.iconActiveClass,
@@ -96,6 +103,14 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     setIsPathFinding,
   } = useGraphStore();
   
+  const { reset: resetRouteBuilder } = useRouteBuilderStore();
+  const variants  = useAppStore((s) => s.variants);
+  const outliers  = useAppStore((s) => s.outliers);
+  const allVariants = useMemo(
+    () => [...(variants ?? []), ...(outliers ?? [])],
+    [variants, outliers]
+  );
+  
   // Combined loading state
   const isAnyLoading = isLoading || isLayoutLoading;
 
@@ -117,9 +132,11 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         setSidebarActiveTab(key as SidebarTab)
         // Toggle pathfinding mode based on whether we're on the Routing tab
         setIsPathFinding(key === "Routing")
+        // Reset route builder when navigating away
+        if (key !== "RouteBuilder") resetRouteBuilder();
       }
     })
-  },[pathname, setSidebarActiveTab, setIsPathFinding])
+  },[pathname, setSidebarActiveTab, setIsPathFinding, resetRouteBuilder])
 
   // Effect: Compute layout when allNodes is populated or selectedNodeIds changes
   // Note: We watch allNodes/allEdges directly (not just length) to ensure we re-compute
@@ -208,7 +225,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
             selectedPathNodes.size === 0 &&
             sidebarActiveTab !== "SearchCaseIds" &&
             sidebarActiveTab !== "Outliers" &&
-            sidebarActiveTab !== "Routing" && (
+            sidebarActiveTab !== "Routing" &&
+            sidebarActiveTab !== "RouteBuilder" && (
 
               <div className="flex flex-col gap-4 justify-center items-center h-full text-center p-10">
                 <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center">
@@ -224,15 +242,23 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               </div>
             )}
 
-          {/* Graph Visualization */}
-          {/* در حالت SearchCaseIds/Outliers/Routing با مسیر فعال، گراف بدون نیاز به selectedNodeIds رندر می‌شود */}
+          {/* Graph Visualization — hidden on RouteBuilder (Sankey takes over) */}
           {!isAnyLoading &&
+            sidebarActiveTab !== "RouteBuilder" &&
             (selectedNodeIds.size > 0 || selectedPathNodes.size > 0 || sidebarActiveTab === "SearchCaseIds" || sidebarActiveTab === "Outliers" || sidebarActiveTab === "Routing") && (
 
               <Graph
                 className="w-full h-full bg-slate-50"
               />
             )}
+
+          {/* ── Route Builder Sankey Flow ── */}
+          {sidebarActiveTab === "RouteBuilder" && (
+            <SankeyFlow
+              allVariants={allVariants}
+              allNodes={allNodes}
+            />
+          )}
 
           {/* Empty State: No data yet */}
           {!isAnyLoading && !graphData && sidebarActiveTab !== 'SearchCaseIds' && (

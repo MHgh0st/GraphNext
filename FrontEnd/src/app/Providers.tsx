@@ -1,5 +1,6 @@
 "use client";
 import {HeroUIProvider} from "@heroui/system";
+import {ToastProvider} from "@heroui/toast";
 import {useRouter} from "next/navigation";
 
 export default function Providers({
@@ -10,7 +11,8 @@ export default function Providers({
     const router = useRouter();
     return <>
         <HeroUIProvider navigate={router.push}>
-            {children}
+          <ToastProvider />
+          {children}
         </HeroUIProvider>
     </>
 }

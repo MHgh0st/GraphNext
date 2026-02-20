@@ -32,6 +32,7 @@
     "@xyflow/react": "^12.8.6",
     "apache-arrow": "^21.1.0",
     "apexcharts": "^5.3.6",
+    "d3-sankey": "^0.12.3",
     "d3-scale": "^4.0.2",
     "elkjs": "^0.11.0",
     "framer-motion": "^12.23.24",
@@ -47,6 +48,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/d3-sankey": "^0.12.5",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

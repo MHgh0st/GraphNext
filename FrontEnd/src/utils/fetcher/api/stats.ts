@@ -25,11 +25,11 @@ export const statsApi = {
         },
       });
 
-      showToast({
-        type: "success",
-        title: "آمار یال دریافت شد",
-        message: `آمار مسیر «${source} ← ${target}» با موفقیت بارگذاری شد.`,
-      });
+      // showToast({
+      //   type: "success",
+      //   title: "آمار یال دریافت شد",
+      //   message: `آمار مسیر «${source} ← ${target}» با موفقیت بارگذاری شد.`,
+      // });
 
       return data;
     } catch (error) {
@@ -59,11 +59,11 @@ export const statsApi = {
         }
       );
 
-      showToast({
-        type: "success",
-        title: "آمار کلی دریافت شد",
-        message: "آمار فرآیند با موفقیت بارگذاری شد.",
-      });
+      // showToast({
+      //   type: "success",
+      //   title: "آمار کلی دریافت شد",
+      //   message: "آمار فرآیند با موفقیت بارگذاری شد.",
+      // });
 
       return data;
     } catch (error) {

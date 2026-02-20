@@ -126,6 +126,7 @@ export interface PaletteOption {
 export type SidebarTab =
   | "Filter"      // Data filtering
   | "Routing"     // Pathfinding
+  | "RouteBuilder" // Step-by-step route building
   | "Settings"    // Graph settings
   | "Outliers"    // Outlier analysis
   | "SearchCaseIds"; // Case ID search
