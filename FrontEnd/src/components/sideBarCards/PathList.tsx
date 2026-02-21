@@ -7,6 +7,14 @@ import { Chip } from "@heroui/chip";
 import { useMemo, useState, memo } from "react";
 import type { Path, ExtendedPath } from "../../types/types";
 
+// --- تابع کمکی فرمت‌بندی زمان (در سطح ماژول) ---
+const formatDuration = (seconds: number): string => {
+  if (seconds < 60) return `${seconds.toFixed(0)} ثانیه`;
+  if (seconds < 3600) return `${(seconds / 60).toFixed(1)} دقیقه`;
+  if (seconds < 86400) return `${(seconds / 3600).toFixed(1)} ساعت`;
+  return `${(seconds / 86400).toFixed(2)} روز`;
+};
+
 // --- 1. کامپوننت محتوای داخلی (Memo شده) ---
 // با استایل Timeline مدرن
 interface PathNodesListProps {
@@ -21,6 +29,30 @@ const PathNodesList = memo(({ path, allNodes }: PathNodesListProps) => {
   const startIdx = extPath._startIndex ?? 0;
   const endIdx = extPath._endIndex ?? nodesToShow.length - 1;
 
+  // تابع دریافت میانگین زمان برای یال بین nodesToShow[i] و nodesToShow[i+1]
+  const getStepDuration = (i: number): number | null => {
+    const srcId = nodesToShow[i];
+    const tgtId = nodesToShow[i + 1];
+    if (!srcId || !tgtId) return null;
+
+    // اولویت اول (جدید): استفاده از زمان‌های دقیقِ هم‌ایندکس (حل مشکل مسیرهای تکراری و حلقه‌ها)
+    if (extPath._variantTimings) {
+      const t0 = extPath._variantTimings[i];
+      const t1 = extPath._variantTimings[i + 1];
+      if (t0 != null && t1 != null) return Math.max(0, t1 - t0);
+    }
+
+    // اولویت دوم: fallback برای دیتای قدیمی که فقط edgeDuration دارند
+    if (extPath._specificEdgeDurations) {
+      const edgeKey = `${srcId}->${tgtId}`;
+      const dur = extPath._specificEdgeDurations[edgeKey];
+      if (dur != null && dur >= 0) return dur;
+    }
+
+    return null;
+  };
+
+
   return (
     <div className="relative flex flex-col gap-0 pt-2 pb-1 pr-4">
       {/* خط راهنما (Timeline Line) */}
@@ -32,53 +64,72 @@ const PathNodesList = memo(({ path, allNodes }: PathNodesListProps) => {
         const isInPath = i > startIdx && i < endIdx;
         const isOutside = i < startIdx || i > endIdx;
 
+        // زمان از این گره به گره بعدی (فقط برای گره‌های درون مسیر انتخابی)
+        const stepDur = i < nodesToShow.length - 1 ? getStepDuration(i) : null;
+        const showStepTime =
+          stepDur != null &&
+          i >= startIdx &&
+          i < endIdx;
+
         return (
-          <div 
-            key={i} 
-            className={`
-                relative flex items-center gap-3 py-1.5 transition-opacity
-                ${isOutside ? "opacity-40 grayscale" : "opacity-100"}
-            `}
-          >
-            {/* دایره شماره گذاری */}
-            <div className={`
-                relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2
-                ${isStart 
-                    ? "bg-emerald-50 border-emerald-500 text-emerald-600" 
-                    : isEnd 
-                        ? "bg-rose-50 border-rose-500 text-rose-600" 
-                        : isInPath 
-                            ? "bg-blue-50 border-blue-400 text-blue-600" 
-                            : "bg-slate-50 border-slate-300 text-slate-400"
-                }
-            `}>
-                {i + 1}
+          <div key={i} className="relative">
+            {/* ردیف گره */}
+            <div 
+              className={`
+                  relative flex items-center gap-3 py-1.5 transition-opacity
+                  ${isOutside ? "opacity-40 grayscale" : "opacity-100"}
+              `}
+            >
+              {/* دایره شماره گذاری */}
+              <div className={`
+                  relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2
+                  ${isStart 
+                      ? "bg-emerald-50 border-emerald-500 text-emerald-600" 
+                      : isEnd 
+                          ? "bg-rose-50 border-rose-500 text-rose-600" 
+                          : isInPath 
+                              ? "bg-blue-50 border-blue-400 text-blue-600" 
+                              : "bg-slate-50 border-slate-300 text-slate-400"
+                  }
+              `}>
+                  {i + 1}
+              </div>
+
+              <div className="flex items-center gap-2 flex-1">
+                  <span
+                  className={`
+                      text-xs font-vazir
+                      ${isStart ? "font-bold text-emerald-700" : ""}
+                      ${isEnd ? "font-bold text-rose-700" : ""}
+                      ${isInPath ? "text-slate-700 font-medium" : ""}
+                      ${isOutside ? "text-slate-400" : ""}
+                      `}
+                  >
+                  {String(getNodeLabel(id))}
+                  </span>
+
+                  {isStart && (
+                  <Chip size="sm" color="success" variant="flat" className="h-5 text-[10px] px-1 bg-emerald-100 text-emerald-700 border border-emerald-200">
+                      شروع
+                  </Chip>
+                  )}
+                  {isEnd && (
+                  <Chip size="sm" color="danger" variant="flat" className="h-5 text-[10px] px-1 bg-rose-100 text-rose-700 border border-rose-200">
+                      پایان
+                  </Chip>
+                  )}
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-1">
-                <span
-                className={`
-                    text-xs font-vazir
-                    ${isStart ? "font-bold text-emerald-700" : ""}
-                    ${isEnd ? "font-bold text-rose-700" : ""}
-                    ${isInPath ? "text-slate-700 font-medium" : ""}
-                    ${isOutside ? "text-slate-400" : ""}
-                    `}
-                >
-                {getNodeLabel(id)}
-                </span>
-
-                {isStart && (
-                <Chip size="sm" color="success" variant="flat" className="h-5 text-[10px] px-1 bg-emerald-100 text-emerald-700 border border-emerald-200">
-                    شروع
-                </Chip>
-                )}
-                {isEnd && (
-                <Chip size="sm" color="danger" variant="flat" className="h-5 text-[10px] px-1 bg-rose-100 text-rose-700 border border-rose-200">
-                    پایان
-                </Chip>
-                )}
-            </div>
+            {/* نمایش زمان طی شده بین این گره و گره بعدی */}
+            {showStepTime && (
+              <div className="relative flex items-center gap-1.5 py-0.5 pr-9 pl-1">
+                <div className="relative z-10 flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-500">
+                  <Clock size={9} className="shrink-0" />
+                  <span className="text-[9px] leading-none">{formatDuration(stepDur!)}</span>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -91,23 +142,26 @@ const PathNodesList = memo(({ path, allNodes }: PathNodesListProps) => {
 interface PathListComponentProps {
   paths: Path[];
   allNodes: Node[];
-  selectedIndex: number | null;
-  onSelectPath: (path: Path, index: number) => void;
+  selectedIndex?: number | null;
+  onSelectPath?: (path: Path, index: number) => void;
   onRemovePath?: (index: number) => void;
   className?: string;
   emptyMessage?: string;
   groupByType?: boolean;
+  /** نمایش دکمه «مشاهده روی گراف» — پیش‌فرض true */
+  showGraphButton?: boolean;
 }
 
 export const PathList = ({
   paths,
   allNodes,
-  selectedIndex,
+  selectedIndex = null,
   onSelectPath,
   onRemovePath,
   className = "",
   emptyMessage = "هیچ مسیری یافت نشد.",
   groupByType = false,
+  showGraphButton = true,
 }: PathListComponentProps) => {
   
   // استیت برای Load More
@@ -120,13 +174,6 @@ export const PathList = ({
 
   const handleLoadMore = (key: string) => {
     setItemsToShow((prev) => ({ ...prev, [key]: prev[key] + 50 }));
-  };
-
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds.toFixed(0)} ثانیه`;
-    if (seconds < 3600) return `${(seconds / 60).toFixed(1)} دقیقه`;
-    if (seconds < 86400) return `${(seconds / 3600).toFixed(1)} ساعت`;
-    return `${(seconds / 86400).toFixed(2)} روز`;
   };
 
   const { absolutePaths, relativePaths, otherPaths } = useMemo(() => {
@@ -200,40 +247,43 @@ export const PathList = ({
                     </div>
                 }
                 startContent={
-                  <div className="flex items-center gap-1 pl-2 border-r border-slate-100 mr-2 pr-2">
-                     <div onClick={(e) => e.stopPropagation()}>
-                      <Tooltip content={isSelected ? "مسیر فعلی" : "مشاهده روی گراف"} showArrow color="primary" className="text-xs">
-                        <Button
-                          isIconOnly
-                          size="sm"
-                          // اگر انتخاب شده است، رنگ آبی وگرنه طوسی
-                          className={`min-w-7 w-7 h-7 rounded-lg transition-colors ${
-                              isSelected 
-                              ? "bg-blue-100 text-blue-600 shadow-[0_0_10px_-3px_rgba(59,130,246,0.5)]" 
-                              : "bg-slate-100 text-slate-400 hover:bg-blue-50 hover:text-blue-500"
-                          }`}
-                          onPress={() => onSelectPath(path, globalIndex)}
-                        >
-                          {isSelected ? <Activity size={16} /> : <Monitor size={16} />}
-                        </Button>
-                      </Tooltip>
-                    </div>
+                  (showGraphButton || onRemovePath) ? (
+                    <div className="flex items-center gap-1 pl-2 border-r border-slate-100 mr-2 pr-2">
+                       {showGraphButton && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <Tooltip content={isSelected ? "مسیر فعلی" : "مشاهده روی گراف"} showArrow color="primary" className="text-xs">
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              className={`min-w-7 w-7 h-7 rounded-lg transition-colors ${
+                                  isSelected 
+                                  ? "bg-blue-100 text-blue-600 shadow-[0_0_10px_-3px_rgba(59,130,246,0.5)]" 
+                                  : "bg-slate-100 text-slate-400 hover:bg-blue-50 hover:text-blue-500"
+                              }`}
+                              onPress={() => onSelectPath?.(path, globalIndex)}
+                            >
+                              {isSelected ? <Activity size={16} /> : <Monitor size={16} />}
+                            </Button>
+                          </Tooltip>
+                        </div>
+                      )}
 
-                    {onRemovePath && (
-                      <Tooltip content="حذف" showArrow color="danger" className="text-xs">
-                        <Button
-                          isIconOnly
-                          variant="light"
-                          color="danger"
-                          size="sm"
-                          className="min-w-7 w-7 h-7 rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500"
-                          onPress={() => onRemovePath(globalIndex)}
-                        >
-                          <X size={16} />
-                        </Button>
-                      </Tooltip>
-                    )}
-                  </div>
+                      {onRemovePath && (
+                        <Tooltip content="حذف" showArrow color="danger" className="text-xs">
+                          <Button
+                            isIconOnly
+                            variant="light"
+                            color="danger"
+                            size="sm"
+                            className="min-w-7 w-7 h-7 rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                            onPress={() => onRemovePath(globalIndex)}
+                          >
+                            <X size={16} />
+                          </Button>
+                        </Tooltip>
+                      )}
+                    </div>
+                  ) : undefined
                 }
                 // استایل‌دهی شرطی برای آیتم انتخاب شده
                 className={`
@@ -281,32 +331,33 @@ export const PathList = ({
                 content: "py-2"
             }}
         >
-          <AccordionItem 
-            key="absolute" 
-            title={
-                <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    مسیرهای کامل ({absolutePaths.length.toLocaleString()})
-                </div>
-            }
-          >
-            {renderPathItems(absolutePaths, "absolute")}
-          </AccordionItem>
-
-          <AccordionItem 
-            key="relative" 
-            title={
-                <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                    مسیرهای نسبی ({relativePaths.length.toLocaleString()})
-                </div>
-            }
-          >
-            {renderPathItems(relativePaths, "relative")}
-          </AccordionItem>
-
-          {otherPaths.length > 0 && (
+          {[  
             <AccordionItem 
+              key="absolute" 
+              title={
+                  <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      مسیرهای کامل ({absolutePaths.length.toLocaleString()})
+                  </div>
+              }
+            >
+              {renderPathItems(absolutePaths, "absolute")}
+            </AccordionItem>,
+
+            <AccordionItem 
+              key="relative" 
+              title={
+                  <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      مسیرهای نسبی ({relativePaths.length.toLocaleString()})
+                  </div>
+              }
+            >
+              {renderPathItems(relativePaths, "relative")}
+            </AccordionItem>,
+
+            otherPaths.length > 0 ? (
+              <AccordionItem 
                 key="others" 
                 title={
                     <div className="flex items-center gap-2">
@@ -314,10 +365,11 @@ export const PathList = ({
                         سایر مسیرها ({otherPaths.length.toLocaleString()})
                     </div>
                 }
-            >
-              {renderPathItems(otherPaths, "others")}
-            </AccordionItem>
-          )}
+              >
+                {renderPathItems(otherPaths, "others")}
+              </AccordionItem>
+            ) : null,
+          ].filter(Boolean)}
         </Accordion>
       ) : (
         renderPathItems(paths, "all")

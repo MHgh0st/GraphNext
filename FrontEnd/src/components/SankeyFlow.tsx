@@ -1,564 +1,538 @@
-'use client'
+  'use client'
 
-/**
- * @component SankeyFlow
- *
- * Sankey diagram for Route Builder, rendered INSIDE a ReactFlow canvas
- * so users get infinite pan/zoom out of the box.
- *
- * Architecture
- * ────────────
- * 1. d3-sankey computes positions in a fixed logical space (CANVAS_W × CANVAS_H).
- * 2. Each Sankey node → a ReactFlow custom node positioned at (n.x0, n.y0).
- * 3. Each Sankey link → a ReactFlow custom edge whose SVG path is pre-computed
- *    by d3-sankey (same coordinate space, so it lines up perfectly).
- * 4. ReactFlow provides pan / zoom / infinite canvas.
- */
+  /**
+   * @component RouteBuilderFlow (formerly SankeyFlow)
+   *
+   * A modern step-by-step Directed Acyclic Graph (DAG) layout for Route Building.
+   * Replaces the legacy d3-sankey layout with a clean, deterministic tree layout.
+   */
 
-import { useMemo, useCallback, useEffect } from "react";
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  Background,
-  BackgroundVariant,
-  Controls,
-  useReactFlow,
-  NodeProps,
-  EdgeProps,
-  Handle,
-  Position,
-  Node as RFNode,
-  Edge as RFEdge,
-} from "@xyflow/react";
-import {
-  sankey as d3Sankey,
-  sankeyLinkHorizontal,
-  SankeyNode as D3SankeyNode,
-  SankeyLink as D3SankeyLink,
-  SankeyGraph,
-} from "d3-sankey";
-import { Node as GraphNode } from "@xyflow/react";
-import {
-  GitFork, RotateCcw, Milestone, CheckCircle2, ChevronRight,
-} from "lucide-react";
+  import { useMemo, useCallback, useEffect } from "react";
+  import {
+    ReactFlow,
+    ReactFlowProvider,
+    Background,
+    BackgroundVariant,
+    Controls,
+    useReactFlow,
+    NodeProps,
+    EdgeProps,
+    Handle,
+    Position,
+    Node as RFNode,
+    Edge as RFEdge,
+    getSmoothStepPath,
+    EdgeLabelRenderer,
+  } from "@xyflow/react";
+  import { Node as GraphNode } from "@xyflow/react";
+  import {
+    GitFork, RotateCcw, Milestone, CheckCircle2, ChevronRight, Check
+  } from "lucide-react";
 
-import type { Variant } from "@/types/types";
-import { useRouteBuilderStore } from "@/store/useRouteBuilderStore";
+  import type { Variant } from "@/types/types";
+  import { useRouteBuilderStore } from "@/store/useRouteBuilderStore";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // CONSTANTS & LAYOUT SETTINGS
+  // ─────────────────────────────────────────────────────────────────────────────
 
-/** Fixed logical canvas d3-sankey uses for layout */
-const CANVAS_W = 1400;
-const CANVAS_H = 700;
-const PAD_X    = 80;
-const PAD_TOP  = 60;
-const PAD_BOT  = 60;
-const NODE_W   = 22;
-const NODE_PAD = 20;
+  const X_OFFSET = 500; // فاصله افقی بین مراحل
+  const Y_OFFSET = 150;  // فاصله عمودی بین کاندیداها
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────────────────────────────────────
+  type NodeType = "start" | "selected" | "current" | "candidate";
 
-type NodeType = "start" | "selected" | "current" | "candidate";
-
-interface SankeyNodeExtra {
-  id: string;
-  label: string;
-  type: NodeType;
-  count?: number;
-  stepIndex?: number;
-}
-
-interface SankeyLinkExtra {
-  value: number;
-}
-
-type SNode  = D3SankeyNode<SankeyNodeExtra, SankeyLinkExtra>;
-type SLink  = D3SankeyLink<SankeyNodeExtra, SankeyLinkExtra>;
-type SGraph = SankeyGraph<SankeyNodeExtra, SankeyLinkExtra>;
-
-interface RawLink { source: string; target: string; value: number; }
-
-// RFNode data shape
-interface NodeData extends Record<string, unknown> {
-  label: string;
-  type: NodeType;
-  count?: number;
-  stepIndex?: number;
-  onSelect?: () => void;
-  nodeWidth: number;
-  nodeHeight: number;
-}
-
-// RFEdge data shape
-interface EdgeData extends Record<string, unknown> {
-  svgPath: string;
-  linkWidth: number;
-}
-
-interface SankeyFlowProps {
-  allVariants: Variant[];
-  allNodes: GraphNode[];
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DESIGN TOKENS
-// ─────────────────────────────────────────────────────────────────────────────
-
-const COLORS: Record<NodeType, { bg: string; border: string; text: string; ring?: string }> = {
-  start:     { bg: "linear-gradient(160deg,#fbbf24,#d97706)", border: "#fde68a", text: "#fff" },
-  selected:  { bg: "linear-gradient(160deg,#fb923c,#ea580c)", border: "#fed7aa", text: "#fff" },
-  current:   { bg: "linear-gradient(160deg,#f97316,#c2410c)", border: "#fb923c", text: "#fff", ring: "#f97316" },
-  candidate: { bg: "linear-gradient(160deg,#fff,#fef9ee)",    border: "#fde68a", text: "#92400e" },
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-function computeCandidates(
-  selectedPath: string[],
-  allVariants: Variant[]
-): { candidates: Array<{ nodeId: string; count: number }>; matchCount: number } {
-  if (!selectedPath.length || !allVariants.length) return { candidates: [], matchCount: 0 };
-
-  const pathSet = new Set(selectedPath);
-  const map = new Map<string, number>();
-  let matchCount = 0;
-
-  for (const v of allVariants) {
-    const vp = v.Variant_Path;
-    const si = vp.indexOf(selectedPath[0]);
-    if (si === -1) continue;
-    let ok = true;
-    for (let i = 1; i < selectedPath.length; i++) {
-      if (vp[si + i] !== selectedPath[i]) { ok = false; break; }
-    }
-    if (!ok) continue;
-    matchCount++;
-    const ni = si + selectedPath.length;
-    // Skip nodes already in path to prevent circular links
-    if (ni < vp.length && !pathSet.has(vp[ni])) {
-      map.set(vp[ni], (map.get(vp[ni]) ?? 0) + 1);
-    }
+  interface NodeData extends Record<string, unknown> {
+    label: string;
+    type: NodeType;
+    count?: number;
+    totalMatches?: number;
+    stepIndex?: number;
+    onSelect?: () => void;
   }
 
-  return {
-    matchCount,
-    candidates: Array.from(map.entries())
-      .map(([nodeId, count]) => ({ nodeId, count }))
-      .sort((a, b) => b.count - a.count),
-  };
-}
+  interface EdgeData extends Record<string, unknown> {
+    isCandidate: boolean;
+    count?: number;
+    totalMatches?: number;
+    maxCount?: number;
+  }
+
+  interface SankeyFlowProps {
+    allVariants: Variant[];
+    allNodes: GraphNode[];
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  function computeCandidates(
+    selectedPath: string[],
+    allVariants: Variant[]
+  ): { candidates: Array<{ nodeId: string; count: number }>; matchCount: number } {
+    if (!selectedPath.length || !allVariants.length) return { candidates: [], matchCount: 0 };
+
+    const map = new Map<string, number>();
+    let matchCount = 0;
+
+    for (const v of allVariants) {
+      const vp = v.Variant_Path;
+      let variantMatched = false;
+      let nextNodesForThisVariant = new Set<string>(); // برای جلوگیری از شمارش تکراری گره بعدی در یک واریانت
+
+      // جستجوی توالی مسیر انتخابی در سرتاسر واریانت (Sliding Window)
+      for (let i = 0; i <= vp.length - selectedPath.length; i++) {
+        let ok = true;
+        for (let j = 0; j < selectedPath.length; j++) {
+          if (vp[i + j] !== selectedPath[j]) {
+            ok = false;
+            break;
+          }
+        }
+        
+        // اگر توالی پیدا شد، گره بعدی را شکار کن
+        if (ok) {
+          variantMatched = true;
+          const ni = i + selectedPath.length; 
+          if (ni < vp.length) {
+            nextNodesForThisVariant.add(vp[ni]);
+          }
+        }
+      }
+
+      if (variantMatched) {
+        matchCount++;
+        nextNodesForThisVariant.forEach(nodeId => {
+          map.set(nodeId, (map.get(nodeId) ?? 0) + 1);
+        });
+      }
+    }
+
+    return {
+      matchCount,
+      candidates: Array.from(map.entries())
+        .map(([nodeId, count]) => ({ nodeId, count }))
+        .sort((a, b) => b.count - a.count),
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // CUSTOM REACT FLOW NODE (Step Card)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  function StepNode({ data }: NodeProps<RFNode<NodeData>>) {
+    const { label, type, count, totalMatches, stepIndex, onSelect } = data;
+    const isCandidate = type === "candidate";
+    const isCurrent = type === "current";
+    const isSelected = type === "selected" || type === "start";
+
+    // محاسبه درصد برای کاندیداها
+    const percentage = isCandidate && count && totalMatches 
+      ? Math.round((count / totalMatches) * 100) 
+      : 0;
+
+    return (
+      <div
+        onClick={isCandidate ? onSelect : undefined}
+        className={`relative group flex items-center gap-3 px-5 py-3.5 rounded-2xl min-w-[200px] max-w-[280px] transition-all duration-300
+          ${isCandidate 
+            ? "cursor-pointer bg-white border-2 border-dashed border-amber-300 hover:border-amber-500 hover:bg-amber-50 hover:shadow-lg hover:-translate-y-1" 
+            : "bg-white border border-slate-200 shadow-md"}
+          ${isCurrent ? "ring-4 ring-amber-500/20 border-amber-500" : ""}
+        `}
+        dir="rtl"
+      >
+        <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
+        <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
+
+        {/* آیکون وضعیت */}
+        <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-inner
+          ${isSelected ? "bg-amber-500 text-white" : ""}
+          ${isCurrent ? "bg-orange-600 text-white animate-pulse" : ""}
+          ${isCandidate ? "bg-amber-100 text-amber-600 border border-amber-200" : ""}
+        `}>
+          {isSelected ? <Check size={16} strokeWidth={3} /> : isCurrent ? (stepIndex ?? 0) + 1 : "?"}
+        </div>
+
+        <div className="flex flex-col overflow-hidden">
+          <span className={`text-sm font-bold truncate ${isCandidate ? "text-slate-700" : "text-slate-800"}`}>
+            {label}
+          </span>
+          
+          {/* اطلاعات درصد و تعداد برای کاندیداها */}
+          {isCandidate && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-[11px] font-semibold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded">
+                {percentage}%
+              </span>
+              <span className="text-[10px] text-slate-500">
+                ({count} مسیر)
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* افکت هاور فلش برای کاندیداها */}
+        {isCandidate && (
+          <div className="absolute right-3 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0 duration-300">
+            <ChevronRight size={18} className="text-amber-500" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // CUSTOM REACT FLOW EDGE (Smooth Step with Label)
+  // ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CUSTOM REACT FLOW NODE
-// ─────────────────────────────────────────────────────────────────────────────
+  // CUSTOM REACT FLOW EDGE (Smooth Step with Label)
+  // ─────────────────────────────────────────────────────────────────────────────
 
-function SankeyNodeRF({ data }: NodeProps<RFNode<NodeData>>) {
-  const { label, type, count, stepIndex, onSelect, nodeWidth, nodeHeight } = data;
-  const c = COLORS[type];
-  const r  = Math.min(nodeWidth, nodeHeight) / 2;
-  const isCandidate = type === "candidate";
-  const isCurrent   = type === "current";
+  function StepEdge({
+  sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data
+}: EdgeProps<RFEdge<EdgeData>>) {
+  const [edgePath] = getSmoothStepPath({
+    sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
+    borderRadius: 50, 
+  });
+
+  const { isCandidate, count, totalMatches, maxCount } = data || {};
+  
+  let strokeWidth = 2;
+  let displayPercentage = 0;
+  let edgeColor = "#fbbf24"; // amber-400
+  let haloColor = "#fef3c7"; // amber-100
+  let edgeOpacity = 0.5;
+
+  if (isCandidate && count != null && totalMatches != null && maxCount != null) {
+    // درصدی که روی لیبل نوشته می‌شود (درصد واقعی از کل)
+    displayPercentage = Math.round((count / totalMatches) * 100);
+    
+    // درصدی که برای استایل‌دهی استفاده می‌شود (درصد نسبی در مقایسه با بهترین کاندیدا)
+    const relativePercentage = (count / maxCount) * 100;
+
+    // ۱. محاسبه ضخامت بر اساس کاندیدای برتر (از ۲ تا ۱۴ پیکسل)
+    strokeWidth = 2 + (relativePercentage / 100) * 12;
+
+    // ۲. محاسبه شفافیت
+    edgeOpacity = 0.35 + (relativePercentage / 100) * 0.65;
+
+    // ۳. تغییر رنگ بر اساس قدرت نسبی
+    if (relativePercentage >= 75) {
+      edgeColor = "#ea580c"; // orange-600 (بهترین گزینه‌ها)
+      haloColor = "#ffedd5"; // orange-100
+    } else if (relativePercentage >= 35) {
+      edgeColor = "#f59e0b"; // amber-500 (گزینه‌های متوسط)
+      haloColor = "#fef3c7"; // amber-100
+    } else {
+      edgeColor = "#fbbf24"; // amber-400 (گزینه‌های ضعیف)
+      haloColor = "#fffbeb"; // amber-50
+    }
+
+  } else if (!isCandidate) {
+    strokeWidth = 5;
+    edgeColor = "#d97706"; // amber-600
+    haloColor = "#fde68a"; // amber-200
+    edgeOpacity = 1;
+  }
+
+  const customLabelX = targetX - 55; 
+  const customLabelY = targetY;      
 
   return (
     <>
-      {/* invisible handles so RF draws edges correctly */}
-      <Handle type="target" position={Position.Left}  style={{ opacity: 0, pointerEvents: "none" }} />
-      <Handle type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none" }} />
+      <path
+        d={edgePath}
+        fill="none"
+        stroke={haloColor}
+        strokeWidth={strokeWidth + 8}
+        strokeOpacity={0.6}
+        className="transition-all duration-300"
+      />
+      <path
+        d={edgePath}
+        fill="none"
+        stroke={edgeColor}
+        strokeWidth={strokeWidth}
+        strokeOpacity={edgeOpacity}
+        strokeDasharray={isCandidate ? "6, 6" : "none"}
+        className={isCandidate ? "animate-[dash_1s_linear_infinite]" : ""}
+      />
 
-      {/* Outer pulsing ring for candidates */}
-      {isCandidate && (
-        <div
-          className="absolute inset-0 animate-pulse"
-          style={{
-            borderRadius: r + 6,
-            margin: -6,
-            border: "1.5px solid #f59e0b",
-            opacity: 0.6,
-          }}
-        />
+      {isCandidate && displayPercentage > 0 && (
+        <EdgeLabelRenderer>
+          <div
+            className="absolute nodrag nopan pointer-events-none"
+            style={{
+              transform: `translate(-50%, -50%) translate(${customLabelX}px, ${customLabelY}px)`,
+              zIndex: 20,
+            }}
+          >
+            <div 
+              className="bg-white/95 backdrop-blur shadow-sm text-[11px] font-bold px-2 py-0.5 rounded-full border"
+              style={{ 
+                color: edgeColor, 
+                borderColor: haloColor,
+                opacity: edgeOpacity >= 0.8 ? 1 : 0.8
+              }}
+            >
+              {displayPercentage}%
+            </div>
+          </div>
+        </EdgeLabelRenderer>
       )}
-
-      {/* Dashed ring for current node */}
-      {isCurrent && (
-        <div
-          className="absolute"
-          style={{
-            inset: -5,
-            borderRadius: r + 5,
-            border: "2px dashed #f97316",
-            opacity: 0.7,
-          }}
-        />
-      )}
-
-      {/* Main pill */}
-      <div
-        onClick={isCandidate ? onSelect : undefined}
-        style={{
-          width: nodeWidth,
-          height: nodeHeight,
-          borderRadius: r,
-          background: c.bg,
-          border: `1.5px solid ${c.border}`,
-          cursor: isCandidate ? "pointer" : "default",
-          boxShadow: isCandidate
-            ? "0 4px 16px rgba(245,158,11,0.3)"
-            : "0 3px 10px rgba(245,158,11,0.2)",
-          position: "relative",
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {/* Glass shine */}
-        <div
-          style={{
-            position: "absolute",
-            top: 2, left: 3, right: 3,
-            height: "35%",
-            borderRadius: r - 2,
-            background: "rgba(255,255,255,0.35)",
-          }}
-        />
-      </div>
-
-      {/* Step number badge (non-candidates) */}
-      {!isCandidate && stepIndex != null && (
-        <div
-          style={{
-            position: "absolute",
-            top: -12,
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 18,
-            height: 18,
-            borderRadius: 9,
-            background: "linear-gradient(135deg,#fbbf24,#f59e0b)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 8,
-            fontWeight: 800,
-            color: "#fff",
-            boxShadow: "0 1px 4px rgba(245,158,11,0.4)",
-          }}
-        >
-          {stepIndex + 1}
-        </div>
-      )}
-
-      {/* Candidate count badge */}
-      {isCandidate && count != null && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: -18,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "#fef3c7",
-            border: "1px solid #fde68a",
-            borderRadius: 8,
-            padding: "1px 7px",
-            fontSize: 9,
-            fontWeight: 700,
-            color: "#92400e",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {count}
-        </div>
-      )}
-
-      {/* Label — above for selected nodes, to the right for candidates */}
-      <div
-        style={{
-          position: "absolute",
-          ...(isCandidate
-            ? { left: nodeWidth + 14, top: "50%", transform: "translateY(-50%)", textAlign: "left" }
-            : { top: -30, left: "50%", transform: "translateX(-50%)", textAlign: "center", whiteSpace: "nowrap" }),
-          fontSize: 11,
-          fontWeight: 600,
-          color: isCandidate ? "#78350f" : "#1e293b",
-          maxWidth: 160,
-          pointerEvents: "none",
-        }}
-      >
-        {label.length > 26 ? label.slice(0, 25) + "…" : label}
-      </div>
     </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CUSTOM REACT FLOW EDGE
-// ─────────────────────────────────────────────────────────────────────────────
+  const nodeTypes = { stepNode: StepNode };
+  const edgeTypes = { stepEdge: StepEdge };
 
-function SankeyEdgeRF({ data }: EdgeProps<RFEdge<EdgeData>>) {
-  if (!data?.svgPath) return null;
-  const w = Math.max(data.linkWidth ?? 2, 2);
-  return (
-    <g>
-      {/* glow */}
-      <path d={data.svgPath} fill="none" stroke="#fbbf24" strokeWidth={w + 10} strokeOpacity={0.08} />
-      {/* main */}
-      <path d={data.svgPath} fill="none" stroke="#f59e0b" strokeWidth={w} strokeOpacity={0.55} />
-    </g>
-  );
-}
+  // ─────────────────────────────────────────────────────────────────────────────
+  // INNER COMPONENT
+  // ─────────────────────────────────────────────────────────────────────────────
 
-const nodeTypes = { sankeyNode: SankeyNodeRF };
-const edgeTypes = { sankeyEdge: SankeyEdgeRF };
+  function SankeyInner({ allVariants, allNodes }: SankeyFlowProps) {
+    const { selectedPath, addNode, removeLastNode, reset } = useRouteBuilderStore();
+    const { fitView } = useReactFlow();
 
-// ─────────────────────────────────────────────────────────────────────────────
-// INNER COMPONENT (needs useReactFlow, so inside ReactFlowProvider)
-// ─────────────────────────────────────────────────────────────────────────────
+    const getLabel = useCallback(
+      (id: string) => (allNodes.find(n => n.id === id)?.data?.label as string) || id,
+      [allNodes]
+    );
 
-function SankeyInner({
-  allVariants,
-  allNodes,
-}: SankeyFlowProps) {
-  const { selectedPath, addNode, removeLastNode, reset } = useRouteBuilderStore();
-  const { fitView } = useReactFlow();
+    const { candidates, matchCount } = useMemo(
+      () => computeCandidates(selectedPath, allVariants),
+      [selectedPath, allVariants]
+    );
 
-  const getLabel = useCallback(
-    (id: string) => (allNodes.find(n => n.id === id)?.data?.label as string) || id,
-    [allNodes]
-  );
+    // ─── ALGORITHMIC LAYOUT (No external library needed) ───
+  const { rfNodes, rfEdges } = useMemo(() => {
+      if (!selectedPath.length) return { rfNodes: [], rfEdges: [] };
 
-  /* ── Compute candidates ── */
-  const { candidates, matchCount } = useMemo(
-    () => computeCandidates(selectedPath, allVariants),
-    [selectedPath, allVariants]
-  );
+      const nodes: RFNode<NodeData>[] = [];
+      const edges: RFEdge<EdgeData>[] = [];
 
-  /* ── Build raw sankey data ── */
-  const { rawNodes, rawLinks } = useMemo(() => {
-    if (!selectedPath.length) return { rawNodes: [], rawLinks: [] };
+      // 1. Layout Selected Path
+      selectedPath.forEach((id, i) => {
+        const rfNodeId = `path-${i}-${id}`; // ساخت آیدی کاملا یکتا برای هر مرحله
+        
+        nodes.push({
+          id: rfNodeId,
+          type: "stepNode",
+          position: { x: i * X_OFFSET, y: 0 },
+          data: {
+            label: getLabel(id),
+            type: i === 0 ? "start" : i === selectedPath.length - 1 ? "current" : "selected",
+            stepIndex: i,
+            rawId: id // نگهداری شناسه اصلی دیتابیس
+          },
+        });
 
-    const nodes: SankeyNodeExtra[] = [];
-    const links: RawLink[] = [];
-
-    selectedPath.forEach((id, i) => {
-      nodes.push({
-        id,
-        label: getLabel(id),
-        type: i === 0 ? "start" : i === selectedPath.length - 1 ? "current" : "selected",
-        stepIndex: i,
+        if (i > 0) {
+          const prevRfNodeId = `path-${i - 1}-${selectedPath[i - 1]}`;
+          edges.push({
+            id: `e-${prevRfNodeId}-to-${rfNodeId}`,
+            source: prevRfNodeId,
+            target: rfNodeId,
+            type: "stepEdge",
+            data: { isCandidate: false },
+            animated: false,
+          });
+        }
       });
-    });
-    candidates.forEach(c => {
-      nodes.push({ id: c.nodeId, label: getLabel(c.nodeId), type: "candidate", count: c.count });
-    });
 
-    for (let i = 0; i < selectedPath.length - 1; i++)
-      links.push({ source: selectedPath[i], target: selectedPath[i + 1], value: matchCount || 1 });
+      // 2. Layout Candidates
+      const lastRawId = selectedPath[selectedPath.length - 1];
+      const lastRfNodeId = `path-${selectedPath.length - 1}-${lastRawId}`;
+      
+      const candX = selectedPath.length * X_OFFSET; 
+      const totalCands = candidates.length;
+      const startY = -((totalCands - 1) * Y_OFFSET) / 2;
 
-    const lastId = selectedPath[selectedPath.length - 1];
-    candidates.forEach(c => links.push({ source: lastId, target: c.nodeId, value: c.count }));
+      const maxCandidateCount = candidates.length > 0 ? candidates[0].count : 1;
 
-    return { rawNodes: nodes, rawLinks: links };
-  }, [selectedPath, candidates, matchCount, getLabel]);
+      candidates.forEach((c, j) => {
+        const candRfId = `cand-${c.nodeId}`; // آیدی یکتا برای کاندیداها
 
-  /* ── d3-sankey layout ── */
-  const { laidOutNodes, laidOutLinks } = useMemo(() => {
-    if (!rawNodes.length) return { laidOutNodes: [] as SNode[], laidOutLinks: [] as SLink[] };
-    try {
-      const layout = d3Sankey<SankeyNodeExtra, SankeyLinkExtra>()
-        .nodeId((d: SankeyNodeExtra) => d.id)
-        .nodeWidth(NODE_W)
-        .nodePadding(NODE_PAD)
-        .extent([[PAD_X, PAD_TOP], [CANVAS_W - PAD_X, CANVAS_H - PAD_BOT]]);
+        nodes.push({
+          id: candRfId,
+          type: "stepNode",
+          position: { x: candX, y: startY + j * Y_OFFSET },
+          data: {
+            label: getLabel(c.nodeId),
+            type: "candidate",
+            count: c.count,
+            totalMatches: matchCount,
+            rawId: c.nodeId, 
+          },
+        });
 
-      const graph: SGraph = layout({
-        nodes: rawNodes.map(n => ({ ...n })),
-        links: rawLinks as unknown as Array<D3SankeyLink<SankeyNodeExtra, SankeyLinkExtra>>,
+        edges.push({
+          id: `e-${lastRfNodeId}-to-${candRfId}`,
+          source: lastRfNodeId,
+          target: candRfId,
+          type: "stepEdge",
+          animated: true,
+          data: { isCandidate: true, count: c.count, totalMatches: matchCount, maxCount: maxCandidateCount },
+        });
       });
-      return { laidOutNodes: graph.nodes, laidOutLinks: graph.links };
-    } catch (e) {
-      console.error("d3-sankey layout error:", e);
-      return { laidOutNodes: [] as SNode[], laidOutLinks: [] as SLink[] };
-    }
-  }, [rawNodes, rawLinks]);
 
-  /* ── Convert to RF nodes / edges ── */
-  const rfNodes = useMemo<RFNode<NodeData>[]>(() =>
-    laidOutNodes.map((n: SNode, i: number) => {
-      const nw = (n.x1 ?? 0) - (n.x0 ?? 0);
-      const nh = (n.y1 ?? 0) - (n.y0 ?? 0);
-      return {
-        id: n.id,
-        type: "sankeyNode",
-        position: { x: n.x0 ?? 0, y: n.y0 ?? 0 },
-        style: { width: nw, height: nh, overflow: "visible" },
-        data: {
-          label: n.label,
-          type: n.type,
-          count: n.count,
-          stepIndex: i,
-          onSelect: n.type === "candidate" ? () => addNode(n.id) : undefined,
-          nodeWidth: nw,
-          nodeHeight: nh,
-        },
-        draggable: false,
-        selectable: false,
-        connectable: false,
-      };
-    }),
-  [laidOutNodes, addNode]);
+      return { rfNodes: nodes, rfEdges: edges };
+    }, [selectedPath, candidates, matchCount, getLabel]);
 
-  const rfEdges = useMemo<RFEdge<EdgeData>[]>(() =>
-    laidOutLinks.map((link: SLink, i: number) => {
-      const src = link.source as SNode;
-      const tgt = link.target as SNode;
-      return {
-        id: `e-${i}`,
-        source: src.id,
-        target: tgt.id,
-        type: "sankeyEdge",
-        data: {
-          svgPath: sankeyLinkHorizontal<SankeyNodeExtra, SankeyLinkExtra>()(link) || "",
-          linkWidth: link.width ?? 2,
-        },
-        animated: false,
-        interactionWidth: 0,
-        selectable: false,
-      };
-    }),
-  [laidOutLinks]);
+    // انیمیشن فیت شدن دوربین بعد از هر تغییر
+    useEffect(() => {
+      if (rfNodes.length > 0) {
+        setTimeout(() => fitView({ padding: 0.3, duration: 600 }), 50);
+      }
+    }, [rfNodes.length, fitView]);
 
-  /* fitView whenever the nodes change */
-  useEffect(() => {
-    if (rfNodes.length > 0) {
-      setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 50);
-    }
-  }, [rfNodes.length, fitView]);
+    const isEmpty = selectedPath.length === 0;
+    const hasTerminated = selectedPath.length > 0 && candidates.length === 0;
+    const baseNodes = allNodes.filter(n => n.id !== "START_NODE" && n.id !== "END_NODE");
 
-  const isEmpty = selectedPath.length === 0;
-  const hasTerminated = selectedPath.length > 0 && candidates.length === 0;
-  const baseNodes = allNodes.filter(n => n.id !== "START_NODE" && n.id !== "END_NODE");
+    return (
+      <div className="relative w-full h-full bg-slate-50" dir="ltr">
+        {/* تعریف انیمیشن خط چین در CSS محلی */}
+        <style dangerouslySetInnerHTML={{__html: `
+          @keyframes dash {
+            to { stroke-dashoffset: -10; }
+          }
+        `}} />
 
-  return (
-    <div className="relative w-full h-full">
-      {/* React Flow canvas — always mounted so controls are visible */}
-      <ReactFlow
-        nodes={rfNodes}
-        edges={rfEdges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.1}
-        maxZoom={3}
-        proOptions={{ hideAttribution: true }}
-        className="bg-gradient-to-br from-slate-50 via-amber-50/20 to-white"
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={28} size={1} color="rgba(0,0,0,0.07)" />
-        <Controls showInteractive={false} className="!bg-white !border-slate-200 !shadow-md" />
-      </ReactFlow>
+        <ReactFlow
+          nodes={rfNodes}
+          edges={rfEdges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          minZoom={0.1}
+          maxZoom={1.5}
+          proOptions={{ hideAttribution: true }}
+          className="bg-gradient-to-br from-slate-50 via-slate-100/50 to-amber-50/10"
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={true}
+          onNodeClick={(_, node) => {
+            if (node.data.type === "candidate") {
+              // استفاده از rawId به جای node.id
+              addNode(node.data.rawId as string); 
+            }
+          }}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={30} size={1.5} color="#cbd5e1" />
+          <Controls showInteractive={false} className="!bg-white !border-slate-200 !shadow-md" />
+        </ReactFlow>
 
-      {/* ── Top bar (floats above RF canvas) ── */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-5 py-3
-        bg-white/80 backdrop-blur-sm border-b border-slate-200/80 shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center">
-            <GitFork size={14} className="text-amber-600" />
-          </div>
-          <span className="text-sm font-bold text-slate-800">مسیرساز هوشمند</span>
-          {selectedPath.length > 0 && (
-            <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-              {selectedPath.length} گره &nbsp;•&nbsp; {matchCount} واریانت
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {selectedPath.length > 0 && (
-            <>
-              <button onClick={removeLastNode}
-                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-amber-700
-                  bg-slate-100 hover:bg-amber-50 border border-slate-200 hover:border-amber-300
-                  px-3 py-1.5 rounded-lg transition-all">
-                <RotateCcw size={12} /> بازگشت
-              </button>
-              <button onClick={reset}
-                className="flex items-center gap-1.5 text-xs text-rose-600 hover:text-rose-700
-                  bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1.5 rounded-lg transition-all">
-                شروع مجدد
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── EMPTY STATE ── */}
-      {isEmpty && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-6 pt-16 pb-6 px-6 overflow-y-auto
-          bg-gradient-to-br from-slate-50/95 via-amber-50/50 to-white/95">
-          <div className="text-center">
-            <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center">
-              <Milestone size={28} className="text-amber-500" />
+        {/* ── Top bar ── */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-5 py-3
+          bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm" dir="rtl">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-amber-500 flex items-center justify-center shadow-inner text-white">
+              <GitFork size={18} />
             </div>
-            <p className="text-slate-700 font-bold text-lg">گره شروع را انتخاب کنید</p>
-            <p className="text-slate-400 text-sm mt-1">برای شروع مسیرسازی روی یک گره کلیک کنید</p>
+            <span className="text-sm font-bold text-slate-800">مسیرساز هوشمند</span>
+            {selectedPath.length > 0 && (
+              <div className="flex gap-2 mr-3 border-r pr-3 border-slate-300">
+                <span className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded-md font-medium">
+                  {selectedPath.length} گره
+                </span>
+                <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md font-medium">
+                  {matchCount} مسیر باقی‌مانده
+                </span>
+              </div>
+            )}
           </div>
-          {baseNodes.length > 0 ? (
-            <div className="grid gap-2 w-full max-w-2xl"
-              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
-              {baseNodes.map(node => (
-                <button key={node.id} onClick={() => addNode(node.id)}
-                  className="group flex items-center gap-2 px-4 py-3 rounded-xl text-right
+          
+          <div className="flex items-center gap-3">
+            {selectedPath.length > 0 && (
+              <>
+                <button onClick={removeLastNode}
+                  className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-amber-700
                     bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300
-                    shadow-sm hover:shadow-md transition-all duration-200">
-                  <ChevronRight size={14}
-                    className="text-slate-300 group-hover:text-amber-500 shrink-0 rotate-180 transition-colors" />
-                  <span className="text-sm text-slate-600 group-hover:text-amber-800 transition-colors leading-tight">
-                    {node.data.label as string}
-                  </span>
+                    px-4 py-2 rounded-lg transition-all shadow-sm">
+                  <RotateCcw size={14} /> بازگشت یک مرحله
                 </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-slate-400 text-sm">ابتدا فیلتر تاریخ را اعمال کنید.</p>
-          )}
+                <button onClick={reset}
+                  className="flex items-center gap-1.5 text-xs text-rose-600 hover:text-white
+                    bg-rose-50 hover:bg-rose-500 border border-rose-200 hover:border-rose-500 px-4 py-2 rounded-lg transition-all shadow-sm">
+                  شروع مجدد
+                </button>
+              </>
+            )}
+          </div>
         </div>
-      )}
 
-      {/* ── TERMINAL / CANDIDATE HINT ── */}
-      {!isEmpty && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-          {hasTerminated ? (
-            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-2 shadow-sm">
-              <CheckCircle2 size={15} className="text-emerald-500" />
-              <span className="text-emerald-700 text-sm font-bold">پایان مسیر</span>
+        {/* ── EMPTY STATE ── */}
+        {isEmpty && (
+          <div className="absolute inset-0 z-10 flex flex-col overflow-y-auto pt-24 pb-12 px-6
+            bg-gradient-to-br from-slate-50 via-white to-amber-50/30 backdrop-blur-sm" dir="rtl">
+            
+            {/* Wrapper داخلی با margin-auto که باعث می‌شود محتوا در صورت کم بودن وسط بماند و در صورت زیاد بودن به درستی اسکرول شود */}
+            <div className="m-auto flex flex-col items-center w-full max-w-4xl gap-8">
+              
+              <div className="text-center animate-in fade-in zoom-in duration-500 shrink-0">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-amber-100 border-2 border-amber-200 flex items-center justify-center shadow-lg shadow-amber-100/50">
+                  <Milestone size={36} className="text-amber-500" />
+                </div>
+                <h2 className="text-slate-800 font-extrabold text-2xl">نقطه شروع مسیر را انتخاب کنید</h2>
+                <p className="text-slate-500 text-sm mt-2 max-w-md mx-auto">
+                  با انتخاب اولین رویداد، الگوریتم سامانه تمام مسیرهای ممکنی که پرونده ها طی کرده‌اند را به شما پیشنهاد می‌دهد.
+                </p>
+              </div>
+              
+              {baseNodes.length > 0 ? (
+                <div className="grid gap-3 w-full animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150 shrink-0"
+                  style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+                  {baseNodes.map(node => (
+                    <button key={node.id} onClick={() => addNode(node.id)}
+                      className="group flex items-center justify-between px-5 py-4 rounded-2xl text-right
+                        bg-white hover:bg-amber-50 border-2 border-slate-100 hover:border-amber-400
+                        shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 cursor-pointer">
+                      <span className="text-sm font-bold text-slate-700 group-hover:text-amber-800 leading-tight">
+                        {node.data.label as string}
+                      </span>
+                      <div className="w-6 h-6 rounded-full bg-slate-50 group-hover:bg-amber-200 flex items-center justify-center transition-colors">
+                        <ChevronRight size={14} className="text-slate-400 group-hover:text-amber-700 rotate-180" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 text-amber-700 px-6 py-4 rounded-xl text-sm font-medium shrink-0">
+                  لطفاً ابتدا از پنل بالایی فیلتر تاریخ را اعمال کنید تا گره‌ها بارگذاری شوند.
+                </div>
+              )}
+
             </div>
-          ) : candidates.length > 0 ? (
-            <div className="bg-white/80 backdrop-blur-sm border border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
-              <p className="text-slate-500 text-xs">روی گره‌های نارنجی کلیک کنید تا مسیر ادامه پیدا کند</p>
-            </div>
-          ) : null}
-        </div>
-      )}
-    </div>
-  );
-}
+          </div>
+        )}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EXPORTED WRAPPER — provides ReactFlowProvider
-// ─────────────────────────────────────────────────────────────────────────────
+        {/* ── TERMINAL HINT ── */}
+        {!isEmpty && (
+          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 pointer-events-none" dir="rtl">
+            {hasTerminated ? (
+              <div className="flex items-center gap-3 bg-white border-2 border-emerald-500 rounded-2xl px-6 py-3 shadow-xl animate-bounce">
+                <div className="bg-emerald-100 rounded-full p-1">
+                  <CheckCircle2 size={20} className="text-emerald-600" />
+                </div>
+                <span className="text-emerald-700 text-base font-bold">پایان مسیر — هیچ رویداد ادامه‌دهنده‌ای وجود ندارد</span>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    );
+  }
 
-export default function SankeyFlow(props: SankeyFlowProps) {
-  return (
-    <ReactFlowProvider>
-      <SankeyInner {...props} />
-    </ReactFlowProvider>
-  );
-}
+  export default function SankeyFlow(props: SankeyFlowProps) {
+    return (
+      <ReactFlowProvider>
+        <SankeyInner {...props} />
+      </ReactFlowProvider>
+    );
+  }

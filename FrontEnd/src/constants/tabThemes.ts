@@ -59,15 +59,6 @@ export const TAB_THEMES: Record<SidebarTab, TabThemeConfig> = {
     indicatorClass: "bg-rose-500",
     iconActiveClass: "text-rose-600",
   },
-  Settings: {
-    title: "تنظیمات",
-    icon: Settings,
-    path:"/settings",
-    // خاکستری تیره (Slate)
-    activeClass: "bg-slate-100 text-slate-800 shadow-sm",
-    indicatorClass: "bg-slate-600",
-    iconActiveClass: "text-slate-700",
-  },
   RouteBuilder: {
     title: "مسیرساز هوشمند",
     icon: GitFork,
@@ -76,5 +67,14 @@ export const TAB_THEMES: Record<SidebarTab, TabThemeConfig> = {
     activeClass: "bg-amber-50/80 text-amber-700 shadow-[0_4px_12px_-4px_rgba(245,158,11,0.2)]",
     indicatorClass: "bg-amber-500",
     iconActiveClass: "text-amber-600",
+  },
+  Settings: {
+    title: "تنظیمات",
+    icon: Settings,
+    path:"/settings",
+    // خاکستری تیره (Slate)
+    activeClass: "bg-slate-100 text-slate-800 shadow-sm",
+    indicatorClass: "bg-slate-600",
+    iconActiveClass: "text-slate-700",
   },
 };

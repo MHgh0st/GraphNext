@@ -62,16 +62,29 @@ function computeNextCandidates(
 
   for (const variant of allVariants) {
     const vp = variant.Variant_Path;
-    const si = vp.indexOf(selectedPath[0]);
-    if (si === -1) continue;
-    let ok = true;
-    for (let i = 1; i < selectedPath.length; i++) {
-      if (vp[si + i] !== selectedPath[i]) { ok = false; break; }
+    let variantMatched = false;
+    let nextNodesForThisVariant = new Set<string>();
+
+    // جستجوی پیشرفته (Sliding Window) هماهنگ با گراف
+    for (let i = 0; i <= vp.length - selectedPath.length; i++) {
+      let ok = true;
+      for (let j = 0; j < selectedPath.length; j++) {
+        if (vp[i + j] !== selectedPath[j]) { ok = false; break; }
+      }
+      
+      if (ok) {
+        variantMatched = true;
+        const ni = i + selectedPath.length;
+        if (ni < vp.length) nextNodesForThisVariant.add(vp[ni]);
+      }
     }
-    if (!ok) continue;
-    matchingVariants.push(variant);
-    const ni = si + selectedPath.length;
-    if (ni < vp.length) candidateMap.set(vp[ni], (candidateMap.get(vp[ni]) ?? 0) + 1);
+
+    if (variantMatched) {
+      matchingVariants.push(variant);
+      nextNodesForThisVariant.forEach(nodeId => {
+        candidateMap.set(nodeId, (candidateMap.get(nodeId) ?? 0) + 1);
+      });
+    }
   }
 
   return {
@@ -88,61 +101,60 @@ function buildExtendedPaths(
 ): ExtendedPath[] {
   if (selectedPath.length < 2) return [];
 
-  type Entry = {
-    path: ExtendedPath;
-    totalFreq: number;
-    weightedDur: number;
-    wEdge: Record<string, number>;
-    sumTotal: Record<string, number>;
-  };
-  const pathMap = new Map<string, Entry>();
-
-  for (const variant of matchingVariants) {
+  return matchingVariants.map(variant => {
     const vp = variant.Variant_Path;
-    const si = vp.indexOf(selectedPath[0]);
-    if (si === -1) continue;
+    
+    // پیدا کردن ایندکس شروع مسیر انتخابی داخل واریانت
+    let si = -1;
+    for (let i = 0; i <= vp.length - selectedPath.length; i++) {
+      let ok = true;
+      for (let j = 0; j < selectedPath.length; j++) {
+        if (vp[i + j] !== selectedPath[j]) { ok = false; break; }
+      }
+      if (ok) { si = i; break; }
+    }
+
     const ei = si + selectedPath.length - 1;
     const isAbsolute = si === 0 && ei === vp.length - 1;
     const freq = variant.Frequency || 1;
-    let totalDur = 0;
+    
+    let selectedPortionDur = 0; // زمان محاسبه شده فقط برای بخش انتخاب شده کاربر
     const edgeDurs: Record<string, number> = {};
     const edgeTotals: Record<string, number> = {};
+    
+    // استخراج زمان‌ها برای کل مسیرِ این واریانت
     if (variant.Avg_Timings?.length) {
-      for (let i = si; i < ei && i + 1 < variant.Avg_Timings.length; i++) {
+      for (let i = 0; i < vp.length - 1; i++) {
         const dur = Math.max(0, (variant.Avg_Timings[i + 1] ?? 0) - (variant.Avg_Timings[i] ?? 0));
         const tdur = Math.max(0, (variant.Total_Timings?.[i + 1] ?? 0) - (variant.Total_Timings?.[i] ?? 0));
-        totalDur += dur;
+        
+        // اگر این یال، دقیقاً داخل مسیری است که کاربر انتخاب کرده، زمانش را به جمع کل اضافه کن
+        if (i >= si && i < ei) {
+          selectedPortionDur += dur;
+        }
+
+        // اما دیتای تک‌تک یال‌ها را نگه دار تا در تایم‌لاین (هنگام باز کردن آکاردئون) نمایش داده شوند
         const eid = `${vp[i]}->${vp[i + 1]}`;
-        edgeDurs[eid] = dur;
-        edgeTotals[eid] = tdur;
+        edgeDurs[eid] = (edgeDurs[eid] || 0) + dur;
+        edgeTotals[eid] = (edgeTotals[eid] || 0) + tdur;
       }
     }
-    const ep: ExtendedPath = {
-      nodes: [...selectedPath], edges: [], frequency: freq, totalDuration: totalDur,
-      averageDuration: selectedPath.length > 1 ? totalDur / (selectedPath.length - 1) : 0,
-      _pathType: isAbsolute ? "absolute" : "relative", _frequency: freq,
-      _fullPathNodes: vp, _startIndex: si, _endIndex: ei,
-      _variantTimings: variant.Avg_Timings?.slice(si, ei + 1),
-      _specificEdgeDurations: edgeDurs, _specificTotalDurations: edgeTotals,
+    
+    return {
+      nodes: [...vp], 
+      edges: [], 
+      frequency: freq, 
+      totalDuration: selectedPortionDur, // <--- فقط زمانِ مسیرِ انتخاب شده تنظیم می‌شود
+      averageDuration: selectedPath.length > 1 ? selectedPortionDur / (selectedPath.length - 1) : 0,
+      _pathType: isAbsolute ? "absolute" : "relative", 
+      _frequency: freq,
+      _fullPathNodes: vp, 
+      _startIndex: si, 
+      _endIndex: ei,
+      _variantTimings: variant.Avg_Timings,
+      _specificEdgeDurations: edgeDurs, 
+      _specificTotalDurations: edgeTotals,
     };
-    const key = selectedPath.join("->") + JSON.stringify(edgeDurs);
-    const ex = pathMap.get(key);
-    if (ex) {
-      ex.totalFreq += freq; ex.weightedDur += totalDur * freq;
-      for (const [id, d] of Object.entries(edgeDurs)) ex.wEdge[id] = (ex.wEdge[id] ?? 0) + d * freq;
-      for (const [id, d] of Object.entries(edgeTotals)) ex.sumTotal[id] = (ex.sumTotal[id] ?? 0) + d;
-    } else {
-      const we: Record<string, number> = {}; for (const [id, d] of Object.entries(edgeDurs)) we[id] = d * freq;
-      pathMap.set(key, { path: { ...ep }, totalFreq: freq, weightedDur: totalDur * freq, wEdge: we, sumTotal: { ...edgeTotals } });
-    }
-  }
-  return Array.from(pathMap.values()).map(({ path, totalFreq, weightedDur, wEdge, sumTotal }) => {
-    const ae: Record<string, number> = {}; for (const [id, w] of Object.entries(wEdge)) ae[id] = w / totalFreq;
-    path.frequency = totalFreq; path._frequency = totalFreq;
-    path.totalDuration = weightedDur / totalFreq;
-    path.averageDuration = path.nodes.length > 1 ? path.totalDuration / (path.nodes.length - 1) : 0;
-    path._variantDuration = path.totalDuration; path._specificEdgeDurations = ae; path._specificTotalDurations = sumTotal;
-    return path;
   }).sort((a, b) => (b.frequency ?? 0) - (a.frequency ?? 0));
 }
 
@@ -345,7 +357,7 @@ export default function RouteBuilderPage() {
             <span className="text-[10px] text-amber-600 font-bold">{selectedPath.length} گره</span>
             <span className="text-[10px] text-slate-400">•</span>
             <span className="text-[10px] text-slate-500">
-              {matchingVariants.length} واریانت منطبق از {allVariants.length} کل واریانت
+              {matchingVariants.length} مسیر منطبق از {allVariants.length} کل مسیر
             </span>
           </div>
         )}
@@ -369,7 +381,7 @@ export default function RouteBuilderPage() {
       </div>
 
       {/* ── Tab Content ── */}
-      <div className="flex-1 min-h-0 relative overflow-hidden bg-white rounded-xl border border-slate-100">
+      <div className="flex-1 min-h-84 relative overflow-hidden bg-white rounded-xl border border-slate-100">
 
         {/* BUILD TAB */}
         {activeTab === "Build" && (
@@ -427,7 +439,7 @@ export default function RouteBuilderPage() {
                                 </span>
                               </div>
                               <Chip size="sm" className="h-5 bg-amber-100 text-amber-700 text-[10px]">
-                                {candidate.variantCount} واریانت
+                                {candidate.variantCount} مسیر
                               </Chip>
                             </div>
                           ))
@@ -451,7 +463,7 @@ export default function RouteBuilderPage() {
                 <div className="p-2 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-400 text-center">
                   {selectedPath.length === 0
                     ? "روی یک گره کلیک کنید یا از نمودار انتخاب کنید"
-                    : `${matchingVariants.length} واریانت با مسیر فعلی منطبق است`}
+                    : `${matchingVariants.length} مسیر با مسیر فعلی منطبق است`}
                 </div>
               </>
             )}
@@ -486,9 +498,9 @@ export default function RouteBuilderPage() {
                   </Button>
                 </div>
                 <ScrollShadow className="flex-1 p-2">
-                  <PathList paths={displayPaths} allNodes={allNodes} selectedIndex={selectedPathIndex}
-                    onSelectPath={handleSelectPath} onRemovePath={handleRemovePath}
-                    groupByType={true} emptyMessage="مسیر معتبری یافت نشد." />
+                  <PathList paths={displayPaths} allNodes={allNodes}
+                    groupByType={false} emptyMessage="مسیر معتبری یافت نشد."
+                    showGraphButton={false} />
                 </ScrollShadow>
               </div>
             )}
