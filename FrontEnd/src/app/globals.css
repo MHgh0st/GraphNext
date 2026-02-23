@@ -37,3 +37,41 @@ html, body {
 ::-webkit-scrollbar-thumb:active {
   background-color: #64748b; /* تیره‌تر هنگام درگ کردن (معادل slate-500) */
 }
+
+/* ── GraphEmptyState animations ── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-10px); }
+}
+
+@keyframes orbit {
+  0%   { transform: rotate(0deg)   translate(38px) rotate(0deg); }
+  100% { transform: rotate(360deg) translate(38px) rotate(-360deg); }
+}
+
+.graph-empty-state-icon {
+  animation: float 4s ease-in-out infinite;
+}
+
+.graph-empty-state-card {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.graph-empty-state-hint {
+  animation: fadeInUp 0.8s ease-out 0.3s both;
+}
+
+.graph-empty-state-orbit {
+  animation: orbit 6s linear infinite;
+}

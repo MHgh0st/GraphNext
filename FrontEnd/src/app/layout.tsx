@@ -10,7 +10,6 @@ import { Card, CardHeader, CardBody } from "@heroui/card";
 import { TAB_THEMES } from "@/constants/tabThemes";
 import { SidebarTab, FilterTypes } from "@/types/types";
 import {
-  SlidersHorizontal,
   LineSquiggle,
   Settings,
   Workflow,
@@ -22,6 +21,9 @@ import {
 import Graph from "@/components/Graph";
 import SankeyFlow from "@/components/SankeyFlow";
 import Navbar from "@/components/Navbar";
+import GraphEmptyState from "@/components/GraphEmptyState";
+import GraphLoadingState from "@/components/GraphLoadingState";
+import GraphDataReadyState from "@/components/GraphDataReadyState";
 import { useAppStore } from "@/hooks/useAppStore";
 import { useGraphStore } from "@/store/useGraphStore";
 import { useRouteBuilderStore } from "@/store/useRouteBuilderStore";
@@ -36,17 +38,17 @@ const Vazir = localFont({
  * Maps sidebar tabs to their icons
  */
 const TAB_TITLES: Record<SidebarTab, string> = {
-  Filter: "فیلترهای پیشرفته",
-  Routing: "مسیریابی هوشمند",
-  RouteBuilder: "مسیرساز هوشمند",
+  Filter: "فرآیند نگار",
+  Routing: "جریان یاب",
+  RouteBuilder: "جریان ساز هوشمند",
   Settings: "تنظیمات نمودار",
   Outliers: "تحلیل مسیر های کم تکرار",
-  SearchCaseIds: "جستجوی شناسه پرونده",
+  SearchCaseIds: "پرونده نگار",
 };
 
 
 const TAB_ICONS: Record<SidebarTab, React.ReactNode> = {
-  Filter: <SlidersHorizontal className={TAB_THEMES.Filter.iconActiveClass} />,
+  Filter: <Monitor className={TAB_THEMES.Filter.iconActiveClass} />,
   Routing: <LineSquiggle className={TAB_THEMES.Routing.iconActiveClass} />,
   RouteBuilder: <GitFork className={TAB_THEMES.RouteBuilder.iconActiveClass} />,
   Settings: <Settings className={TAB_THEMES.Settings.iconActiveClass} />,
@@ -208,17 +210,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         />
         <div className="w-full h-[calc(100vh-24px)] bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-hidden relative">
           {/* Loading State */}
-          {isAnyLoading && (
-            <div className="absolute inset-0 z-50 flex flex-col gap-4 justify-center items-center bg-white/80 backdrop-blur-sm">
-              <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-slate-600 font-medium animate-pulse">
-                در حال پردازش داده‌ها...
-              </p>
-            </div>
-          )}
+          {isAnyLoading && <GraphLoadingState />}
 
-          {/* Empty State: Data loaded but no nodes selected */}
-          {/* در حالت SearchCaseIds/Outliers/Routing این پیام نمایش داده نمی‌شود */}
+          {/* Node Selection State: Filter tab — data loaded, waiting for node pick */}
           {!isAnyLoading &&
             graphData &&
             selectedNodeIds.size === 0 &&
@@ -227,47 +221,43 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
             sidebarActiveTab !== "Outliers" &&
             sidebarActiveTab !== "Routing" &&
             sidebarActiveTab !== "RouteBuilder" && (
+              <GraphDataReadyState activeTab={sidebarActiveTab} />
+            )}
 
-              <div className="flex flex-col gap-4 justify-center items-center h-full text-center p-10">
-                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center">
-                  <Workflow size={40} className="text-slate-400" />
-                </div>
-                <h2 className="text-xl font-bold text-slate-700">
-                  داده‌ها آماده نمایش هستند
-                </h2>
-                <p className="text-slate-500 max-w-md">
-                  از بخش فیلترها، گره‌های مورد نظر خود را انتخاب
-                  کنید تا گراف ترسیم شود.
-                </p>
-              </div>
+          {/* Data-Ready Waiting States: data loaded but user hasn't made a selection yet */}
+          {/* Routing: wait for path selection | Outliers: wait for variant selection | SearchCaseIds: wait for case search */}
+          {!isAnyLoading &&
+            graphData &&
+            selectedPathNodes.size === 0 &&
+            (sidebarActiveTab === "Routing" ||
+              sidebarActiveTab === "Outliers" ||
+              sidebarActiveTab === "SearchCaseIds") && (
+              <GraphDataReadyState activeTab={sidebarActiveTab} />
             )}
 
           {/* Graph Visualization — hidden on RouteBuilder (Sankey takes over) */}
           {!isAnyLoading &&
+            graphData &&
             sidebarActiveTab !== "RouteBuilder" &&
-            (selectedNodeIds.size > 0 || selectedPathNodes.size > 0 || sidebarActiveTab === "SearchCaseIds" || sidebarActiveTab === "Outliers" || sidebarActiveTab === "Routing") && (
-
+            (selectedNodeIds.size > 0 ||
+              selectedPathNodes.size > 0) && (
               <Graph
                 className="w-full h-full bg-slate-50"
               />
             )}
 
-          {/* ── Route Builder Sankey Flow ── */}
-          {sidebarActiveTab === "RouteBuilder" && (
+
+          {/* ── Route Builder Sankey Flow — only when data is loaded ── */}
+          {sidebarActiveTab === "RouteBuilder" && graphData && (
             <SankeyFlow
               allVariants={allVariants}
               allNodes={allNodes}
             />
           )}
 
-          {/* Empty State: No data yet */}
-          {!isAnyLoading && !graphData && sidebarActiveTab !== 'SearchCaseIds' && (
-            <div className="flex flex-col gap-4 justify-center items-center h-full text-center">
-              <Monitor size={150} className="opacity-20 grayscale" />
-              <p className="text-slate-400 font-medium">
-                لطفاً برای شروع، فایل داده را بارگذاری و فیلتر کنید.
-              </p>
-            </div>
+          {/* Empty State: No data yet — shown for all tabs including RouteBuilder */}
+          {!isAnyLoading && !graphData && (
+            <GraphEmptyState activeTab={sidebarActiveTab} />
           )}
         </div>
       </main>

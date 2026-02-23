@@ -193,7 +193,7 @@ function SideBar({
             >
               
               <p className="font-extrabold text-sm text-slate-800 text-nowrap tracking-tight">
-                سامانه فرآیندکاوی
+                سامانه جریان
               </p>
             </motion.div>
           )}

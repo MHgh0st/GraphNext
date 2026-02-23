@@ -26,8 +26,8 @@
   } from "@xyflow/react";
   import { Node as GraphNode } from "@xyflow/react";
   import {
-    GitFork, RotateCcw, Milestone, CheckCircle2, ChevronRight, Check
-  } from "lucide-react";
+  GitFork, RotateCcw, Milestone, CheckCircle2, ChevronRight, Check, MoreHorizontal
+} from "lucide-react";
 
   import type { Variant } from "@/types/types";
   import { useRouteBuilderStore } from "@/store/useRouteBuilderStore";
@@ -47,6 +47,7 @@
     count?: number;
     totalMatches?: number;
     stepIndex?: number;
+    isMore?: boolean;
     onSelect?: () => void;
   }
 
@@ -55,6 +56,7 @@
     count?: number;
     totalMatches?: number;
     maxCount?: number;
+    isMore?: boolean;
   }
 
   interface SankeyFlowProps {
@@ -121,74 +123,74 @@
   // ─────────────────────────────────────────────────────────────────────────────
 
   function StepNode({ data }: NodeProps<RFNode<NodeData>>) {
-    const { label, type, count, totalMatches, stepIndex, onSelect } = data;
-    const isCandidate = type === "candidate";
-    const isCurrent = type === "current";
-    const isSelected = type === "selected" || type === "start";
+  const { label, type, count, totalMatches, stepIndex, onSelect, isMore } = data;
+  const isCandidate = type === "candidate";
+  const isCurrent = type === "current";
+  const isSelected = type === "selected" || type === "start";
 
-    // محاسبه درصد برای کاندیداها
-    const percentage = isCandidate && count && totalMatches 
-      ? Math.round((count / totalMatches) * 100) 
-      : 0;
+  const percentage = isCandidate && count && totalMatches 
+    ? Math.round((count / totalMatches) * 100) 
+    : 0;
 
-    return (
-      <div
-        onClick={isCandidate ? onSelect : undefined}
-        className={`relative group flex items-center gap-3 px-5 py-3.5 rounded-2xl min-w-[200px] max-w-[280px] transition-all duration-300
-          ${isCandidate 
-            ? "cursor-pointer bg-white border-2 border-dashed border-amber-300 hover:border-amber-500 hover:bg-amber-50 hover:shadow-lg hover:-translate-y-1" 
-            : "bg-white border border-slate-200 shadow-md"}
-          ${isCurrent ? "ring-4 ring-amber-500/20 border-amber-500" : ""}
-        `}
-        dir="rtl"
-      >
-        <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-        <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
+  return (
+    <div
+      onClick={isCandidate && !isMore ? onSelect : undefined}
+      className={`relative group flex items-center gap-3 px-5 py-3.5 rounded-2xl min-w-[200px] max-w-[280px] transition-all duration-300
+        ${isCandidate 
+          ? isMore 
+            ? "cursor-default bg-slate-50 border-2 border-dashed border-slate-300" // استایل گره تجمیعی (خاکستری)
+            : "cursor-pointer bg-white border-2 border-dashed border-amber-300 hover:border-amber-500 hover:bg-amber-50 hover:shadow-lg hover:-translate-y-1" 
+          : "bg-white border border-slate-200 shadow-md"}
+        ${isCurrent ? "ring-4 ring-amber-500/20 border-amber-500" : ""}
+      `}
+      dir="rtl"
+    >
+      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
+      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
 
-        {/* آیکون وضعیت */}
-        <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-inner
-          ${isSelected ? "bg-amber-500 text-white" : ""}
-          ${isCurrent ? "bg-orange-600 text-white animate-pulse" : ""}
-          ${isCandidate ? "bg-amber-100 text-amber-600 border border-amber-200" : ""}
-        `}>
-          {isSelected ? <Check size={16} strokeWidth={3} /> : isCurrent ? (stepIndex ?? 0) + 1 : "?"}
-        </div>
+      {/* آیکون وضعیت بر اساس نوع گره */}
+      <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-inner
+        ${isSelected ? "bg-amber-500 text-white" : ""}
+        ${isCurrent ? "bg-orange-600 text-white animate-pulse" : ""}
+        ${isCandidate && !isMore ? "bg-amber-100 text-amber-600 border border-amber-200" : ""}
+        ${isMore ? "bg-slate-200 text-slate-500 border border-slate-300" : ""}
+      `}>
+        {isSelected ? <Check size={16} strokeWidth={3} /> : 
+         isCurrent ? (stepIndex ?? 0) + 1 : 
+         isMore ? <MoreHorizontal size={16} /> : "?"}
+      </div>
 
-        <div className="flex flex-col overflow-hidden">
-          <span className={`text-sm font-bold truncate ${isCandidate ? "text-slate-700" : "text-slate-800"}`}>
-            {label}
-          </span>
-          
-          {/* اطلاعات درصد و تعداد برای کاندیداها */}
-          {isCandidate && (
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className="text-[11px] font-semibold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded">
-                {percentage}%
-              </span>
-              <span className="text-[10px] text-slate-500">
-                ({count} مسیر)
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* افکت هاور فلش برای کاندیداها */}
+      <div className="flex flex-col overflow-hidden">
+        <span className={`text-sm font-bold truncate ${isMore ? "text-slate-500" : isCandidate ? "text-slate-700" : "text-slate-800"}`}>
+          {label}
+        </span>
+        
         {isCandidate && (
-          <div className="absolute right-3 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0 duration-300">
-            <ChevronRight size={18} className="text-amber-500" />
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${isMore ? "text-slate-600 bg-slate-200" : "text-amber-700 bg-amber-100/80"}`}>
+              {percentage}%
+            </span>
+            <span className="text-[10px] text-slate-500">
+              ({count} مسیر)
+            </span>
           </div>
         )}
       </div>
-    );
-  }
+
+      {/* فلش ادامه مسیر فقط برای کاندیداهای واقعی */}
+      {isCandidate && !isMore && (
+        <div className="absolute right-3 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0 duration-300">
+          <ChevronRight size={18} className="text-amber-500" />
+        </div>
+      )}
+    </div>
+  );
+}
 
   // ─────────────────────────────────────────────────────────────────────────────
   // CUSTOM REACT FLOW EDGE (Smooth Step with Label)
   // ─────────────────────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────────────────────
-  // CUSTOM REACT FLOW EDGE (Smooth Step with Label)
-  // ─────────────────────────────────────────────────────────────────────────────
 
   function StepEdge({
   sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data
@@ -198,7 +200,7 @@
     borderRadius: 50, 
   });
 
-  const { isCandidate, count, totalMatches, maxCount } = data || {};
+  const { isCandidate, count, totalMatches, maxCount, isMore } = data || {};
   
   let strokeWidth = 2;
   let displayPercentage = 0;
@@ -206,7 +208,7 @@
   let haloColor = "#fef3c7"; // amber-100
   let edgeOpacity = 0.5;
 
-  if (isCandidate && count != null && totalMatches != null && maxCount != null) {
+  if (isCandidate && !isMore && count != null && totalMatches != null && maxCount != null) {
     // درصدی که روی لیبل نوشته می‌شود (درصد واقعی از کل)
     displayPercentage = Math.round((count / totalMatches) * 100);
     
@@ -231,6 +233,13 @@
       haloColor = "#fffbeb"; // amber-50
     }
 
+  }else if (isMore) {
+    // خط مربوط به "سایر گره‌ها" (خاکستری و خنثی)
+    displayPercentage = Math.round(((count || 0) / (totalMatches || 1)) * 100);
+    strokeWidth = 3;
+    edgeColor = "#cbd5e1"; // slate-300
+    haloColor = "#f8fafc"; // slate-50
+    edgeOpacity = 0.7;
   } else if (!isCandidate) {
     strokeWidth = 5;
     edgeColor = "#d97706"; // amber-600
@@ -296,7 +305,7 @@
 
   function SankeyInner({ allVariants, allNodes }: SankeyFlowProps) {
     const { selectedPath, addNode, removeLastNode, reset } = useRouteBuilderStore();
-    const { fitView } = useReactFlow();
+    const { fitView, setCenter } = useReactFlow();
 
     const getLabel = useCallback(
       (id: string) => (allNodes.find(n => n.id === id)?.data?.label as string) || id,
@@ -349,12 +358,17 @@
       const lastRfNodeId = `path-${selectedPath.length - 1}-${lastRawId}`;
       
       const candX = selectedPath.length * X_OFFSET; 
-      const totalCands = candidates.length;
+      const MAX_VISIBLE = 7;
+      const topCandidates = candidates.slice(0, MAX_VISIBLE);
+      const hiddenCount = candidates.length - MAX_VISIBLE;
+    
+      // اگر کاندیدای پنهانی داریم، یک ردیف اضافی برای گره "سایر موارد" در نظر می‌گیریم
+      const totalCands = hiddenCount > 0 ? topCandidates.length + 1 : topCandidates.length;
       const startY = -((totalCands - 1) * Y_OFFSET) / 2;
 
       const maxCandidateCount = candidates.length > 0 ? candidates[0].count : 1;
 
-      candidates.forEach((c, j) => {
+      topCandidates.forEach((c, j) => {
         const candRfId = `cand-${c.nodeId}`; // آیدی یکتا برای کاندیداها
 
         nodes.push({
@@ -380,15 +394,58 @@
         });
       });
 
+      // ─── اضافه کردن گره "سایر مسیرها" در صورت وجود ───
+    if (hiddenCount > 0) {
+      const moreId = `cand-more-hidden`;
+      // جمع زدن تعداد مسیرهای پنهان شده
+      const hiddenSum = candidates.slice(MAX_VISIBLE).reduce((sum, c) => sum + c.count, 0);
+
+      nodes.push({
+        id: moreId,
+        type: "stepNode",
+        position: { x: candX, y: startY + topCandidates.length * Y_OFFSET },
+        data: {
+          label: `+ ${hiddenCount} گره دیگر`,
+          type: "candidate",
+          count: hiddenSum,
+          totalMatches: matchCount,
+          maxCount: maxCandidateCount,
+          rawId: "NONE",
+          isMore: true,
+        },
+      });
+
+      edges.push({
+        id: `e-${lastRfNodeId}-to-${moreId}`,
+        source: lastRfNodeId,
+        target: moreId,
+        type: "stepEdge",
+        animated: false,
+        data: { isCandidate: true, isMore: true, count: hiddenSum, totalMatches: matchCount, maxCount: maxCandidateCount },
+      });
+    }
+
       return { rfNodes: nodes, rfEdges: edges };
     }, [selectedPath, candidates, matchCount, getLabel]);
 
-    // انیمیشن فیت شدن دوربین بعد از هر تغییر
-    useEffect(() => {
-      if (rfNodes.length > 0) {
-        setTimeout(() => fitView({ padding: 0.3, duration: 600 }), 50);
-      }
-    }, [rfNodes.length, fitView]);
+    // ─── راهکار دوم: زوم هوشمند دوربین به جای fitView کُلی ───
+  useEffect(() => {
+    if (rfNodes.length > 0) {
+      setTimeout(() => {
+        // پیدا کردن آخرین گره از مسیر انتخاب شده
+        const lastSelectedNode = rfNodes.find(n => n.data.type === 'current' || n.data.type === 'start' && rfNodes.filter(x => x.data.type === 'selected').length === 0);
+        
+        if (lastSelectedNode) {
+          // فوکوس دوربین روی مختصات Xِ گرهِ آخر (کمی متمایل به راست برای دیدن کاندیداها) و Yِ وسط صفحه
+          // زوم را روی 0.9 قفل می‌کنیم تا همیشه خوانا بماند
+          setCenter(lastSelectedNode.position.x + 250, 0, { zoom: 0.9, duration: 600 });
+        } else {
+          // اگر گرهی نبود (حالت شروع)، همان fitView عادی را انجام بده
+          fitView({ padding: 0.3, duration: 600 });
+        }
+      }, 50);
+    }
+  }, [rfNodes.length, setCenter, fitView]);
 
     const isEmpty = selectedPath.length === 0;
     const hasTerminated = selectedPath.length > 0 && candidates.length === 0;
@@ -435,7 +492,7 @@
             <div className="w-8 h-8 rounded-xl bg-amber-500 flex items-center justify-center shadow-inner text-white">
               <GitFork size={18} />
             </div>
-            <span className="text-sm font-bold text-slate-800">مسیرساز هوشمند</span>
+            {/* <span className="text-sm font-bold text-slate-800">مسیرساز هوشمند</span> */}
             {selectedPath.length > 0 && (
               <div className="flex gap-2 mr-3 border-r pr-3 border-slate-300">
                 <span className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded-md font-medium">

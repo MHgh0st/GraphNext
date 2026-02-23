@@ -9,7 +9,7 @@ import { Button } from "@heroui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@heroui/popover";
 import { Chip } from "@heroui/chip";
 import {
-  Activity,
+  SlidersHorizontal,
   Filter,
   CalendarRange,
   ListFilter,
@@ -162,18 +162,13 @@ export default function Navbar({
   };
 
   return (
-    <div className="w-full h-16 bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/60 shadow-sm px-4 flex gap-x-8 items-center z-30 relative transition-all duration-300">
+    <div className="w-full h-16 bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/60 shadow-sm px-4 flex gap-x-4 items-center z-30 relative transition-all duration-300">
       {/* --- Left Side: Title --- */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 border-l pl-3 border-slate-300">
         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-          <Activity size={20} />
+          <SlidersHorizontal size={20} />
         </div>
-        <div className="hidden md:block">
-          <h1 className="text-sm font-bold text-slate-800">
-            داشبورد تحلیل فرآیند
-          </h1>
-          <p className="text-[10px] text-slate-400">سامانه هوشمند مانیتورینگ</p>
-        </div>
+        
       </div>
 
       {/* --- Middle: Dropdown Filter Trigger --- */}

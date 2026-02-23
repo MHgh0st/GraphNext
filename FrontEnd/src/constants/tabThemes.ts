@@ -24,7 +24,7 @@ interface TabThemeConfig {
 
 export const TAB_THEMES: Record<SidebarTab, TabThemeConfig> = {
   Filter: {
-    title: "نمایش فرآیند ها",
+    title: "فرآیند نگار",
     icon: Monitor,
     path:"/",
     // آبی (Blue)
@@ -33,7 +33,7 @@ export const TAB_THEMES: Record<SidebarTab, TabThemeConfig> = {
     iconActiveClass: "text-blue-600",
   },
   Routing: {
-    title: "مسیریابی",
+    title: "جریان یاب",
     icon: LineSquiggle,
     path: "/routing",
     // سبز زمردی (Emerald)
@@ -42,7 +42,7 @@ export const TAB_THEMES: Record<SidebarTab, TabThemeConfig> = {
     iconActiveClass: "text-emerald-600",
   },
   SearchCaseIds: {
-    title: "بررسی تک پرونده",
+    title: "پرونده نگار",
     icon: FolderSearch,
     path: "/search-case-ids",
     // بنفش (Violet)
@@ -60,7 +60,7 @@ export const TAB_THEMES: Record<SidebarTab, TabThemeConfig> = {
     iconActiveClass: "text-rose-600",
   },
   RouteBuilder: {
-    title: "مسیرساز هوشمند",
+    title: "جریان ساز",
     icon: GitFork,
     path: "/route-builder",
     // نارنجی/کهربایی (Amber)
