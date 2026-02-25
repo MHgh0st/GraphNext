@@ -77,11 +77,16 @@ const TAB_TITLE_COLORS: Record<SidebarTab, string> = {
 
 
 // Inner component that uses hooks (must be inside Providers)
+// Inner component that uses hooks (must be inside Providers)
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [isSidebarCollapsed, setIsSidebarCollapsed]= useState<boolean>(false)
   const [isSideCardVisible, setIsSideCardVisible]= useState<boolean>(true)
+  
+  // --- استیت‌های مربوط به تغییر عرض (Resizing) ---
+  const [cardWidth, setCardWidth] = useState<number>(380); // عرض پیش‌فرض ۳۸۰ پیکسل
+  const [isResizing, setIsResizing] = useState<boolean>(false);
   
   // Get state from stores
   const {
@@ -122,7 +127,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     else router.push(path)
   }
 
-  // Handler for filter updates from Navbar
   const handleFilterSubmit = useCallback((newFilters: FilterTypes) => {
     setFilters(newFilters);
   }, [setFilters]);
@@ -131,22 +135,13 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     Object.entries(TAB_THEMES).forEach(([key, value]) => {
       if(value.path === pathname) {
         setSidebarActiveTab(key as SidebarTab)
-        // Reset route builder when navigating away
         if (key !== "RouteBuilder") resetRouteBuilder();
       }
     })
   },[pathname, setSidebarActiveTab, resetRouteBuilder])
 
-  // Effect: Compute layout when allNodes is populated or selectedNodeIds changes
-  // Note: We watch allNodes/allEdges directly (not just length) to ensure we re-compute
-  // when new data is loaded, even if the node count is the same
   useEffect(() => {
-    // Don't compute if there are no nodes at all
-    if (allNodes.length === 0) {
-      return;
-    }
-
-    // Compute layout with the current selected nodes
+    if (allNodes.length === 0) return;
     computeLayout({
       graphData,
       colorPaletteKey: selectedColorPalette,
@@ -156,47 +151,77 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       activePathInfo: undefined,
       searchCasePathInfo: undefined,
     });
-  }, [
-    allNodes,  // Watch array reference, not just length
-    allEdges,  // Watch array reference, not just length
-    selectedNodeIds,
-    selectedColorPalette,
-    startEndNodes,
-    computeLayout,
-    graphData,
-  ]);
+  }, [allNodes, allEdges, selectedNodeIds, selectedColorPalette, startEndNodes, computeLayout, graphData]);
 
-  const sidebarFr = isSidebarCollapsed ? 1 : 3;
-  const cardFr = isSideCardVisible ? 6 : 0;
-  const mainFr = 24 - sidebarFr - cardFr;
+  // --- منطق تغییر سایز (Drag to Resize) ---
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startWidth = cardWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      // در حالت RTL وقتی ماوس به سمت چپ میره (X کمتر میشه)، عرض باید زیاد بشه
+      const deltaX = startX - moveEvent.clientX; 
+      // تنظیم محدودیت حداقل ۲۸۰ و حداکثر ۶۰۰ پیکسل
+      const newWidth = Math.min(Math.max(startWidth + deltaX, 280), 600);
+      setCardWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // تعیین عرض نوار کناری (آیکون‌ها) به صورت ثابت
+  const sidebarWidth = "max-content"; 
+  const actualCardWidth = isSideCardVisible ? `${cardWidth}px` : "0px";
   
   return (
-    <div className="grid h-screen p-3 gap-3 bg-slate-50 overflow-hidden" 
-    style={{
-      gridTemplateColumns: `${sidebarFr}fr ${cardFr}fr ${mainFr}fr`,
-      transition: "grid-template-columns 0.5s cubic-bezier(0.25, 0.8, 0.25, 1)",
-    }}>
+    <div 
+      className={`grid h-screen p-3 gap-3 bg-slate-50 overflow-hidden ${isResizing ? 'select-none cursor-col-resize' : ''}`} 
+      style={{
+        // استفاده از مقادیر دقیق پیکسل به جای fr
+        gridTemplateColumns: `${sidebarWidth} ${actualCardWidth} 1fr`,
+        // در زمان کشیدن ماوس انیمیشن خاموش می‌شود تا پرش نداشته باشیم
+        transition: isResizing ? "none" : "grid-template-columns 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)",
+      }}
+    >
       <SideBar className="rounded-3xl h-full overflow-hidden shrink-0" onToggle={onTabChange} isCollapsed={isSidebarCollapsed} setIsCollapsed={setIsSidebarCollapsed}/>
-      {/* Card Panel */}
-      <div className="h-full min-w-0 overflow-hidden">
-        <Card className="col-span-6 h-[calc(100vh-24px)] bg-white/80 backdrop-blur-xl border border-slate-200/60 shadow-sm rounded-3xl"
-      shadow="none">
+      
+      {/* Card Panel Wrapper with Resizer */}
+      <div className="relative h-full min-w-0 overflow-hidden flex">
+        <Card className="flex-1 h-[calc(100vh-24px)] bg-white/80 backdrop-blur-xl border border-slate-200/60 shadow-sm rounded-3xl" shadow="none">
+          <CardHeader className="flex gap-x-3 items-center border-b border-slate-100 py-4 px-5 shrink-0">
+            <div className={`${TAB_ICON_COLORS[sidebarActiveTab]} p-2 rounded-xl`}>
+              {TAB_ICONS[sidebarActiveTab]}
+            </div>
+            <p className={`text-lg font-bold ${TAB_TITLE_COLORS[sidebarActiveTab]}`}>
+              {TAB_TITLES[sidebarActiveTab]}
+            </p>
+          </CardHeader>
+          
+          <CardBody className="text-right p-0 overflow-hidden">
+            <div className="h-full w-full overflow-y-auto px-4 py-2 scrollbar-hide">
+              {children}
+            </div>
+          </CardBody>
+        </Card>
 
-        <CardHeader className="flex gap-x-3 items-center border-b border-slate-100 py-4 px-5">
-        <div className={`${TAB_ICON_COLORS[sidebarActiveTab]} p-2 rounded-xl`}>
-          {TAB_ICONS[sidebarActiveTab]}
-        </div>
-        <p className={`text-lg font-bold ${TAB_TITLE_COLORS[sidebarActiveTab]}`}>
-          {TAB_TITLES[sidebarActiveTab]}
-        </p>
-        
-      </CardHeader>
-      <CardBody className="text-right p-0 overflow-hidden">
-        <div className="h-full w-full overflow-y-auto px-4 py-2 scrollbar-hide">
-          {children}
-        </div>
-      </CardBody>
-      </Card>
+        {/* --- دستگیره تغییر سایز (Resizer Handle) --- */}
+        {isSideCardVisible && (
+          <div
+            onMouseDown={handleMouseDown}
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-24 cursor-col-resize group flex items-center justify-center z-10"
+          >
+            <div className={`w-1 h-full rounded-full transition-colors duration-200 ${isResizing ? 'bg-blue-500' : 'bg-slate-200 group-hover:bg-blue-300'}`} />
+          </div>
+        )}
       </div>
       
       <main className="flex flex-col gap-y-4 items-center justify-center relative min-w-0 overflow-hidden">
@@ -206,10 +231,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
           isLoading={isAnyLoading}
         />
         <div className="w-full h-[calc(100vh-24px)] bg-white rounded-3xl border border-slate-200/60 shadow-sm overflow-hidden relative">
-          {/* Loading State */}
+          {/* ... بقیه کدهای مربوط به گراف دقیقا مثل قبل ... */}
           {isAnyLoading && <GraphLoadingState />}
 
-          {/* Node Selection State: Filter tab — data loaded, waiting for node pick */}
           {!isAnyLoading &&
             graphData &&
             selectedNodeIds.size === 0 &&
@@ -221,8 +245,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               <GraphDataReadyState activeTab={sidebarActiveTab} />
             )}
 
-          {/* Data-Ready Waiting States: data loaded but user hasn't made a selection yet */}
-          {/* Routing: wait for path selection | Outliers: wait for variant selection | SearchCaseIds: wait for case search */}
           {!isAnyLoading &&
             graphData &&
             selectedPathNodes.size === 0 &&
@@ -232,7 +254,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               <GraphDataReadyState activeTab={sidebarActiveTab} />
             )}
 
-          {/* Graph Visualization — hidden on RouteBuilder (Sankey takes over) */}
           {!isAnyLoading &&
             graphData &&
             sidebarActiveTab !== "RouteBuilder" &&
@@ -243,8 +264,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               />
             )}
 
-
-          {/* ── Route Builder Sankey Flow — only when data is loaded ── */}
           {sidebarActiveTab === "RouteBuilder" && graphData && (
             <SankeyFlow
               allVariants={allVariants}
@@ -252,7 +271,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
             />
           )}
 
-          {/* Empty State: No data yet — shown for all tabs including RouteBuilder */}
           {!isAnyLoading && !graphData && (
             <GraphEmptyState activeTab={sidebarActiveTab} />
           )}
