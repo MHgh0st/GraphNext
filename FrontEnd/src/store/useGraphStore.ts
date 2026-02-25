@@ -74,6 +74,10 @@ interface GraphState {
   pathEndNodeId: string | null;
   foundPaths: ExtendedPath[];
   activePath: ExtendedPath | null;
+
+  // Highlight Mode State
+  isHighlightModeActive: boolean;
+  highlightedActivePath: ExtendedPath | null;
   
   // Internal refs
   _workerRef: Worker | null;
@@ -118,6 +122,10 @@ interface GraphActions {
   // Visibility Actions
   setIsNodeCardVisible: (visible: boolean) => void;
   setIsEdgeCardVisible: (visible: boolean) => void;
+  
+  // Path Highlight Actions
+  highlightPath: (pathNodes: string[], pathEdges: string[], path?: ExtendedPath) => void;
+  clearPathHighlight: () => void;
   
   // Ghost Element Actions
   injectGhostElements: (activePath: ExtendedPath | null, activeSideBar: string) => void;
@@ -266,6 +274,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   pathEndNodeId: null,
   foundPaths: [],
   activePath: null,
+
+  // Initial Highlight Mode State
+  isHighlightModeActive: false,
+  highlightedActivePath: null,
   
   // Internal refs
   _workerRef: null,
@@ -749,8 +761,93 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   // ============================================================================
 
   handleEdgeSelect: (edgeId, overrides) => {
-    const { layoutedEdges, allEdges, layoutedNodes, allNodes, activePath } = get();
+    const { layoutedEdges, allEdges, layoutedNodes, allNodes, activePath, isHighlightModeActive, highlightedActivePath } = get();
 
+    // ---- HIGHLIGHT LOCK MODE ----
+    if (isHighlightModeActive) {
+      const clickedEdge = layoutedEdges.find((e) => e.id === edgeId);
+      const isHighlighted = (clickedEdge?.data as any)?._highlighted === true;
+
+      // Block click on non-highlighted (gray) edges — do nothing
+      if (!isHighlighted) return;
+
+      // For highlighted edges: open tooltip with the SPECIFIC highlighted path's data
+      // but do NOT mutate any edge styles
+      const sourceId = clickedEdge?.source || edgeId.split("->")[0];
+      const targetId = clickedEdge?.target || edgeId.split("->")[1];
+      const sourceNode = layoutedNodes.find((n) => n.id === sourceId) || allNodes.find((n) => n.id === sourceId);
+      const targetNode = layoutedNodes.find((n) => n.id === targetId) || allNodes.find((n) => n.id === targetId);
+
+      // Build tooltip data from highlightedActivePath (not the combined activePath)
+      const pathToUse = highlightedActivePath || activePath;
+      let finalOverrides = overrides;
+      if (!finalOverrides && pathToUse && clickedEdge) {
+        const calculated = calculateEdgeOverride(clickedEdge, pathToUse);
+        if (calculated?.tooltipOverride) finalOverrides = calculated.tooltipOverride;
+      }
+
+      const dataToShow: Array<{ label: string; value: string | number }> = [];
+      const labelValue = finalOverrides?.label !== undefined
+        ? finalOverrides.label
+        : (clickedEdge?.data?.Case_Count as string | number);
+      if (labelValue !== undefined) dataToShow.push({ label: "تعداد", value: labelValue });
+
+      const meanTimeValue = finalOverrides?.meanTime || (clickedEdge?.data?.Tooltip_Mean_Time as string);
+      if (meanTimeValue) dataToShow.push({ label: "میانگین زمان", value: meanTimeValue });
+
+      const totalTimeValue = finalOverrides?.totalTime || (clickedEdge?.data?.Tooltip_Total_Time as string);
+      if (totalTimeValue) dataToShow.push({ label: "زمان کل", value: totalTimeValue });
+
+      // In one pass: restore any previously amber-selected edge, then amber the new one
+      const prevSelectedEdgeId = get().selectedEdgeId;
+      const updatedEdgesHL = layoutedEdges.map((e) => {
+        if (e.id === edgeId) {
+          // New selection — mark amber and save current highlight style
+          return {
+            ...e,
+            style: {
+              ...e.style,
+              stroke: "#FFC107",
+              strokeWidth: 5,
+            },
+            data: {
+              ...e.data,
+              _selectedHighlightStroke: e.style?.stroke,
+              _selectedHighlightWidth: e.style?.strokeWidth,
+            },
+          };
+        }
+        if (e.id === prevSelectedEdgeId) {
+          // Previously selected — restore its saved highlight style
+          const savedStroke = (e.data as any)?._selectedHighlightStroke;
+          const savedWidth = (e.data as any)?._selectedHighlightWidth;
+          if (savedStroke !== undefined) {
+            return {
+              ...e,
+              style: { ...e.style, stroke: savedStroke, strokeWidth: savedWidth ?? 3 },
+              data: {
+                ...e.data,
+                _selectedHighlightStroke: undefined,
+                _selectedHighlightWidth: undefined,
+              },
+            };
+          }
+        }
+        return e; // leave all others unchanged
+      });
+
+      set({
+        layoutedEdges: updatedEdgesHL,
+        edgeTooltipData: dataToShow,
+        edgeTooltipTitle: `از یال ${sourceNode?.data?.label || sourceId} به ${targetNode?.data?.label || targetId}`,
+        isEdgeCardVisible: true,
+        activeTooltipEdgeId: edgeId,
+        selectedEdgeId: edgeId,
+      });
+      return;
+    }
+
+    // ---- NORMAL MODE ----
     set({ selectedEdgeId: edgeId });
 
     const selectedEdge = layoutedEdges.find((e) => e.id === edgeId) || allEdges.find((e) => e.id === edgeId);
@@ -823,7 +920,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   },
 
   handleNodeClick: (event, node, variants, selectedPathNodes, setSelectedPathNodes, selectedPathEdges, setSelectedPathEdges) => {
-    const { isPathFinding, pathStartNodeId, pathEndNodeId, layoutedEdges, layoutedNodes, allNodes, activePath, foundPaths } = get();
+    const { isPathFinding, isHighlightModeActive, pathStartNodeId, pathEndNodeId, layoutedEdges, layoutedNodes, allNodes, activePath, foundPaths } = get();
+
+    // Block ALL node interaction when a path is highlighted
+    if (isHighlightModeActive) return;
 
     set({ activeTooltipEdgeId: null });
 
@@ -981,18 +1081,31 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   },
 
   closeNodeTooltip: () => {
-    const { layoutedNodes, layoutedEdges } = get();
+    const { layoutedNodes, layoutedEdges, isHighlightModeActive } = get();
+
+    if (isHighlightModeActive) {
+      // In highlight mode: only close the card, never mutate edge styles
+      const deselectedNodes = layoutedNodes.map((n) => ({ ...n, selected: false }));
+      set({ isNodeCardVisible: false, nodeTooltipTitle: null, layoutedNodes: deselectedNodes });
+      get().closeEdgeTooltip();
+      return;
+    }
 
     const deselectedNodes = layoutedNodes.map((n) => ({ ...n, selected: false }));
-    const resetEdges = layoutedEdges.map((e) => ({
-      ...e,
-      selected: false,
-      style: {
-        ...e.style,
-        stroke: (e.data as any)?.originalStroke || "#3b82f6",
-        strokeWidth: (e.data as any)?.originalStrokeWidth || 2,
-      },
-    }));
+    const resetEdges = layoutedEdges.map((e) => {
+      // Preserve edges that are part of an active path highlight
+      const isHighlighted = (e.data as any)?._highlighted === true;
+      if (isHighlighted) return { ...e, selected: false };
+      return {
+        ...e,
+        selected: false,
+        style: {
+          ...e.style,
+          stroke: (e.data as any)?.originalStroke || "#3b82f6",
+          strokeWidth: (e.data as any)?.originalStrokeWidth || 2,
+        },
+      };
+    });
 
     set({
       isNodeCardVisible: false,
@@ -1005,17 +1118,47 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   },
 
   closeEdgeTooltip: () => {
-    const { layoutedEdges } = get();
+    const { layoutedEdges, isHighlightModeActive } = get();
 
-    const resetEdges = layoutedEdges.map((e) => ({
-      ...e,
-      selected: false,
-      style: {
-        ...e.style,
-        stroke: (e.data as any)?.originalStroke || "#3b82f6",
-        strokeWidth: (e.data as any)?.originalStrokeWidth || 2,
-      },
-    }));
+    if (isHighlightModeActive) {
+      // Restore any edge that was amber-selected back to its highlighted (purple) style
+      const { selectedEdgeId } = get();
+      const restoredEdges = layoutedEdges.map((e) => {
+        const savedStroke = (e.data as any)?._selectedHighlightStroke;
+        const savedWidth = (e.data as any)?._selectedHighlightWidth;
+        if (e.id !== selectedEdgeId || savedStroke === undefined) return e;
+        return {
+          ...e,
+          style: {
+            ...e.style,
+            stroke: savedStroke,
+            strokeWidth: savedWidth ?? 3,
+          },
+          data: {
+            ...e.data,
+            _selectedHighlightStroke: undefined,
+            _selectedHighlightWidth: undefined,
+          },
+        };
+      });
+      set({ isEdgeCardVisible: false, selectedEdgeId: null, activeTooltipEdgeId: null, layoutedEdges: restoredEdges });
+      return;
+    }
+
+    const resetEdges = layoutedEdges.map((e) => {
+      // Preserve edges that are part of an active path highlight
+      const isHighlighted = (e.data as any)?._highlighted === true;
+      if (isHighlighted) return { ...e, selected: false };
+      return {
+        ...e,
+        selected: false,
+        style: {
+          ...e.style,
+          stroke: (e.data as any)?.originalStroke || "#3b82f6",
+          strokeWidth: (e.data as any)?.originalStrokeWidth || 2,
+        },
+      };
+    });
 
     set({
       isEdgeCardVisible: false,
@@ -1083,6 +1226,129 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   setIsNodeCardVisible: (visible) => set({ isNodeCardVisible: visible }),
   setIsEdgeCardVisible: (visible) => set({ isEdgeCardVisible: visible }),
+
+  // ============================================================================
+  // PATH HIGHLIGHT ACTIONS
+  // ============================================================================
+
+  highlightPath: (pathNodes, pathEdges, path) => {
+    const { layoutedNodes, layoutedEdges } = get();
+    const nodeSet = new Set(pathNodes);
+    const edgeSet = new Set(pathEdges);
+
+    const updatedNodes = layoutedNodes.map((node) => {
+      const inPath = nodeSet.has(node.id);
+      // Save original opacity/filter only on first highlight (not if already highlighted)
+      const preOpacity = (node.data as any)?._preHighlightOpacity ?? node.style?.opacity;
+      return {
+        ...node,
+        style: {
+          ...node.style,
+          opacity: inPath ? 1 : 0.15,
+          filter: inPath ? undefined : 'grayscale(1)',
+          transition: 'opacity 0.3s ease, filter 0.3s ease',
+        },
+        data: {
+          ...node.data,
+          _preHighlightOpacity: preOpacity,
+          // Boolean flag so nodesForRender can reliably detect highlight management
+          // (independent of opacity value which may be undefined)
+          _highlightActive: true,
+        },
+      };
+    });
+
+    const updatedEdges = layoutedEdges.map((edge) => {
+      const inPath = edgeSet.has(edge.id);
+      // Save the real original stroke BEFORE overwriting (only if not already in a highlight state)
+      const isAlreadyHighlighted = (edge.data as any)?._highlighted === true;
+      const realOriginalStroke = isAlreadyHighlighted
+        ? ((edge.data as any)?._preHighlightStroke || (edge.data as any)?.originalStroke || '#52525b')
+        : ((edge.data as any)?.originalStroke || '#52525b');
+      const realOriginalStrokeWidth = isAlreadyHighlighted
+        ? ((edge.data as any)?._preHighlightStrokeWidth ?? (edge.data as any)?.originalStrokeWidth ?? 1.5)
+        : ((edge.data as any)?.originalStrokeWidth ?? (edge.style?.strokeWidth as number) ?? 1.5);
+      const realOriginalDasharray = isAlreadyHighlighted
+        ? (edge.data as any)?._preHighlightDasharray
+        : edge.style?.strokeDasharray;
+
+      return {
+        ...edge,
+        animated: inPath,
+        style: {
+          ...edge.style,
+          stroke: inPath ? '#6366f1' : '#94a3b8',
+          strokeWidth: inPath ? 3 : 1.5,
+          opacity: inPath ? 1 : 0.2,
+          strokeDasharray: inPath ? '8 4' : realOriginalDasharray,
+          transition: 'opacity 0.3s ease, stroke 0.3s ease',
+        },
+        data: {
+          ...edge.data,
+          _highlighted: inPath,
+          // Keep originalStroke intact — save real value separately
+          _preHighlightStroke: realOriginalStroke,
+          _preHighlightStrokeWidth: realOriginalStrokeWidth,
+          _preHighlightDasharray: realOriginalDasharray,
+        },
+      };
+    });
+
+    set({ layoutedNodes: updatedNodes, layoutedEdges: updatedEdges, isHighlightModeActive: true, highlightedActivePath: path || null });
+  },
+
+  clearPathHighlight: () => {
+    const { layoutedNodes, layoutedEdges } = get();
+
+    const updatedNodes = layoutedNodes.map((node) => ({
+      ...node,
+      style: {
+        ...node.style,
+        opacity: undefined,
+        filter: undefined,
+        transition: 'opacity 0.3s ease, filter 0.3s ease',
+      },
+      data: {
+        ...node.data,
+        _preHighlightOpacity: undefined,
+        _highlightActive: undefined,
+      },
+    }));
+
+    const updatedEdges = layoutedEdges.map((edge) => {
+      // Restore from the saved pre-highlight values
+      const stroke = (edge.data as any)?._preHighlightStroke
+        || (edge.data as any)?.originalStroke
+        || '#52525b';
+      const strokeWidth = (edge.data as any)?._preHighlightStrokeWidth ?? 1.5;
+      const strokeDasharray = (edge.data as any)?._preHighlightDasharray;
+
+      return {
+        ...edge,
+        animated: false,
+        style: {
+          ...edge.style,
+          stroke,
+          strokeWidth,
+          opacity: undefined,
+          strokeDasharray,
+          transition: 'opacity 0.3s ease, stroke 0.3s ease',
+        },
+        data: {
+          ...edge.data,
+          _highlighted: false,
+          // Restore the real originalStroke so subsequent operations use correct color
+          originalStroke: stroke,
+          // Clear temp fields
+          _preHighlightStroke: undefined,
+          _preHighlightStrokeWidth: undefined,
+          _preHighlightDasharray: undefined,
+        },
+      };
+    });
+
+    set({ layoutedNodes: updatedNodes, layoutedEdges: updatedEdges, isHighlightModeActive: false, highlightedActivePath: null });
+  },
 
   // ============================================================================
   // GHOST ELEMENT ACTIONS

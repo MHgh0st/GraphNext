@@ -2,7 +2,7 @@ import { Node } from "@xyflow/react";
 import { Button } from "@heroui/button";
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Tooltip } from "@heroui/tooltip";
-import { Monitor, X, ChevronDown, Activity, Clock } from "lucide-react";
+import { Monitor, X, ChevronDown, Activity, Clock, Eye, EyeOff } from "lucide-react";
 import { Chip } from "@heroui/chip";
 import { useMemo, useState, memo } from "react";
 import type { Path, ExtendedPath } from "../../types/types";
@@ -35,18 +35,18 @@ const PathNodesList = memo(({ path, allNodes }: PathNodesListProps) => {
     const tgtId = nodesToShow[i + 1];
     if (!srcId || !tgtId) return null;
 
-    // اولویت اول (جدید): استفاده از زمان‌های دقیقِ هم‌ایندکس (حل مشکل مسیرهای تکراری و حلقه‌ها)
-    if (extPath._variantTimings) {
-      const t0 = extPath._variantTimings[i];
-      const t1 = extPath._variantTimings[i + 1];
-      if (t0 != null && t1 != null) return Math.max(0, t1 - t0);
-    }
-
-    // اولویت دوم: fallback برای دیتای قدیمی که فقط edgeDuration دارند
+    // اولویت اول: استفاده از میانگین‌های دقیق و ترکیب‌شده (همگام با گراف)
     if (extPath._specificEdgeDurations) {
       const edgeKey = `${srcId}->${tgtId}`;
       const dur = extPath._specificEdgeDurations[edgeKey];
       if (dur != null && dur >= 0) return dur;
+    }
+
+    // اولویت دوم: fallback برای مسیرهای خامی که شاید هنوز محاسبه نشده‌اند
+    if (extPath._variantTimings) {
+      const t0 = extPath._variantTimings[i];
+      const t1 = extPath._variantTimings[i + 1];
+      if (t0 != null && t1 != null) return Math.max(0, t1 - t0);
     }
 
     return null;
@@ -143,8 +143,11 @@ interface PathListComponentProps {
   paths: Path[];
   allNodes: Node[];
   selectedIndex?: number | null;
+  selectedIndices?: number[];
   onSelectPath?: (path: Path, index: number) => void;
   onRemovePath?: (index: number) => void;
+  onHighlightPath?: (index: number) => void;
+  highlightedPathIndex?: number | null;
   className?: string;
   emptyMessage?: string;
   groupByType?: boolean;
@@ -156,8 +159,11 @@ export const PathList = ({
   paths,
   allNodes,
   selectedIndex = null,
+  selectedIndices,
   onSelectPath,
   onRemovePath,
+  onHighlightPath,
+  highlightedPathIndex = null,
   className = "",
   emptyMessage = "هیچ مسیری یافت نشد.",
   groupByType = false,
@@ -223,7 +229,9 @@ export const PathList = ({
           {visibleItems.map((path) => {
             const globalIndex = paths.indexOf(path);
             const extPath = path as ExtendedPath;
-            const isSelected = selectedIndex === globalIndex;
+            const isSelected = selectedIndices 
+                ? selectedIndices.includes(globalIndex) 
+                : selectedIndex === globalIndex;
 
             return (
               <AccordionItem
@@ -247,8 +255,32 @@ export const PathList = ({
                     </div>
                 }
                 startContent={
-                  (showGraphButton || onRemovePath) ? (
+                  (showGraphButton || onRemovePath || (onHighlightPath && selectedIndices && selectedIndices.length > 1 && selectedIndices.includes(globalIndex))) ? (
                     <div className="flex items-center gap-1 pl-2 border-r border-slate-100 mr-2 pr-2">
+                       {/* Highlight button — only visible when multiple paths are shown */}
+                       {onHighlightPath && selectedIndices && selectedIndices.length > 1 && selectedIndices.includes(globalIndex) && (
+                         <div onClick={(e) => e.stopPropagation()}>
+                           <Tooltip
+                             content={highlightedPathIndex === globalIndex ? "غیرفعال کردن هایلایت" : "هایلایت این مسیر"}
+                             showArrow
+                             color="secondary"
+                             className="text-xs"
+                           >
+                             <Button
+                               isIconOnly
+                               size="sm"
+                               className={`min-w-7 w-7 h-7 rounded-lg transition-colors ${
+                                 highlightedPathIndex === globalIndex
+                                   ? "bg-indigo-100 text-indigo-600 shadow-[0_0_10px_-3px_rgba(99,102,241,0.5)]"
+                                   : "bg-slate-100 text-slate-400 hover:bg-indigo-50 hover:text-indigo-500"
+                               }`}
+                               onPress={() => onHighlightPath(globalIndex)}
+                             >
+                               {highlightedPathIndex === globalIndex ? <EyeOff size={15} /> : <Eye size={15} />}
+                             </Button>
+                           </Tooltip>
+                         </div>
+                       )}
                        {showGraphButton && (
                         <div onClick={(e) => e.stopPropagation()}>
                           <Tooltip content={isSelected ? "مسیر فعلی" : "مشاهده روی گراف"} showArrow color="primary" className="text-xs">

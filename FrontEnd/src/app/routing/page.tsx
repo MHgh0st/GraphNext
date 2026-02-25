@@ -59,6 +59,8 @@ export default function PathfindingPage() {
     setFoundPaths,
     setActivePath,
     computeLayout,
+    highlightPath,
+    clearPathHighlight,
   } = useGraphStore();
 
   // --- Local States ---
@@ -70,7 +72,8 @@ export default function PathfindingPage() {
   const [searchedNodes, setSearchedNodes] = useState<Node[]>([]);
   const [activeTab, setActiveTab] = useState<"Nodes" | "Paths">("Nodes");
   const [searchValue, setSearchValue] = useState("");
-  const [selectedPathIndex, setSelectedPathIndex] = useState<number | null>(null);
+  const [selectedPathIndices, setSelectedPathIndices] = useState<number[]>([]);
+  const [highlightedPathIndex, setHighlightedPathIndex] = useState<number | null>(null);
 
   // --- Get all nodes (excluding START_NODE and END_NODE) ---
   const baseNodes = useMemo(() => {
@@ -104,6 +107,11 @@ export default function PathfindingPage() {
       
       // Extract the subpath from start to end
       const subPath = variantPath.slice(startIndex, endIndex + 1);
+
+      const pathEdges: string[] = [];
+      for (let i = 0; i < subPath.length - 1; i++) {
+        pathEdges.push(`${subPath[i]}->${subPath[i + 1]}`);
+      }
       
       // Determine path type:
       // - "absolute": starts at index 0 of variant AND ends at last index
@@ -113,7 +121,7 @@ export default function PathfindingPage() {
       // Create ExtendedPath object with proper typing
       const path: ExtendedPath = {
         nodes: subPath,
-        edges: [],
+        edges: pathEdges,
         frequency: variant.Frequency,
         totalDuration: 0,
         averageDuration: 0,
@@ -278,6 +286,14 @@ export default function PathfindingPage() {
     }
   }, [pathStartNodeId, pathEndNodeId, variants, findPathsBetweenNodes, setFoundPaths]);
 
+  // --- Reset highlight when path selection changes ---
+  useEffect(() => {
+    if (selectedPathIndices.length <= 1 && highlightedPathIndex !== null) {
+      setHighlightedPathIndex(null);
+      clearPathHighlight();
+    }
+  }, [selectedPathIndices, highlightedPathIndex, clearPathHighlight]);
+
   // --- Cleanup effect: Reset graph when leaving pathfinding page ---
   useEffect(() => {
     return () => {
@@ -308,7 +324,7 @@ export default function PathfindingPage() {
       setFoundPaths([]);
       setProcessedPaths([]);
       setSortedPaths([]);
-      setSelectedPathIndex(null);
+      setSelectedPathIndices([]); // <--- این خط اصلاح شد
     };
 
     if (!pathStartNodeId) {
@@ -365,52 +381,123 @@ export default function PathfindingPage() {
     );
   }, [baseNodes]);
 
+  const combinePaths = useCallback((selectedPaths: ExtendedPath[]): ExtendedPath | null => {
+  if (selectedPaths.length === 0) return null;
+  if (selectedPaths.length === 1) return selectedPaths[0];
+
+  const combinedNodes = new Set<string>();
+  const combinedEdges = new Set<string>();
+  let totalFreq = 0;
+
+  const edgeTotalDurations: Record<string, number> = {};
+  const edgeCounts: Record<string, number> = {};
+
+  selectedPaths.forEach(path => {
+    path.nodes.forEach(n => combinedNodes.add(n));
+    path.edges.forEach(e => combinedEdges.add(e));
+    
+    const pathFreq = path._frequency || path.frequency || 1;
+    totalFreq += pathFreq;
+
+    // جمع‌آوری اطلاعات یال‌ها برای محاسبه میانگین و مجموع
+    path.edges.forEach(edgeId => {
+      const count = path._specificEdgeCounts?.[edgeId] || pathFreq;
+      edgeCounts[edgeId] = (edgeCounts[edgeId] || 0) + count;
+      
+      const totalDur = path._specificTotalDurations?.[edgeId] 
+                       || (path._specificEdgeDurations?.[edgeId] || 0) * count;
+      edgeTotalDurations[edgeId] = (edgeTotalDurations[edgeId] || 0) + totalDur;
+    });
+  });
+
+  const edgeDurations: Record<string, number> = {};
+  for (const edgeId in edgeTotalDurations) {
+    edgeDurations[edgeId] = edgeTotalDurations[edgeId] / (edgeCounts[edgeId] || 1);
+  }
+
+  // محاسبه‌ی totalDuration و averageDuration از مجموع میانگین یال‌ها
+  const totalDuration = Object.values(edgeDurations).reduce((sum, d) => sum + d, 0);
+  const uniqueEdgeCount = Array.from(combinedEdges).length;
+
+  return {
+    nodes: Array.from(combinedNodes),
+    edges: Array.from(combinedEdges),
+    frequency: totalFreq,
+    _frequency: totalFreq,
+    totalDuration,
+    averageDuration: uniqueEdgeCount > 0 ? totalDuration / uniqueEdgeCount : 0,
+    _specificEdgeDurations: edgeDurations,
+    _specificTotalDurations: edgeTotalDurations,
+    _specificEdgeCounts: edgeCounts,
+  } as ExtendedPath;
+}, []);
+
   // --- Handle select path ---
   const handleSelectPath = useCallback((path: Path, index: number) => {
-    setSelectedPathIndex(index);
-    setAppSelectedPathIndex(index);
-    
-    // Set the selected path nodes (only path nodes, no START_NODE/END_NODE)
-    const pathNodeIds = new Set(path.nodes);
-    setSelectedPathNodes(pathNodeIds);
-    
-    // Generate edge IDs from consecutive node pairs (format: "source->target")
-    const edgeIds = new Set<string>();
-    
-    // Add edges within the path only
-    for (let i = 0; i < path.nodes.length - 1; i++) {
-      const source = path.nodes[i];
-      const target = path.nodes[i + 1];
-      edgeIds.add(`${source}->${target}`);
-    }
-    
-    setSelectedPathEdges(edgeIds);
-    
-    // Cast to ExtendedPath to access edge durations
-    const extPath = path as import("@/types/types").ExtendedPath;
-    
-    // Set the active path in store so calculateEdgeOverride can access it
-    setActivePath(extPath);
-    
-    // Re-layout the graph with only the path nodes
-    const activePathInfoData = {
-      nodes: path.nodes,
-      edges: Array.from(edgeIds),
-      edgeDurations: extPath._specificEdgeDurations || {},
-      edgeTotalDurations: extPath._specificTotalDurations || {},
-      frequency: extPath._frequency || extPath.frequency,
-    };
-    
+  // الف) Toggle کردن ایندکس انتخاب شده
+  let newIndices: number[];
+  if (selectedPathIndices.includes(index)) {
+    newIndices = selectedPathIndices.filter(i => i !== index);
+  } else {
+    newIndices = [...selectedPathIndices, index];
+  }
+  setSelectedPathIndices(newIndices);
+  
+  // ب) اگر هیچ مسیری انتخاب نشده است، گراف را ریست کن
+  if (newIndices.length === 0) {
+    setSelectedPathNodes(new Set());
+    setSelectedPathEdges(new Set());
+    setAppSelectedPathIndex(null);
+    setActivePath(null);
     computeLayout({
       graphData,
       colorPaletteKey: selectedColorPalette,
       startEndNodes: startEndNodes || { start: [], end: [] },
-      filteredNodeIds: pathNodeIds,
-      filteredEdgeIds: edgeIds,
-      activePathInfo: activePathInfoData,
-      searchCasePathInfo: undefined,
+      filteredNodeIds: selectedNodeIds,
+      filteredEdgeIds: null,
     });
-  }, [setSelectedPathNodes, setSelectedPathEdges, setAppSelectedPathIndex, setActivePath, computeLayout, graphData, selectedColorPalette, startEndNodes]);
+    return;
+  }
+
+  // پ) پیدا کردن و ترکیب مسیرهای انتخاب شده
+  const allPaths = sortedPaths.length > 0 ? sortedPaths : (processedPaths.length > 0 ? processedPaths : (foundPaths as Path[]));
+  const selectedExtPaths = newIndices.map(i => allPaths[i] as ExtendedPath);
+  
+  const combinedPath = combinePaths(selectedExtPaths);
+  
+  if (!combinedPath) return;
+
+  const pathNodeIds = new Set(combinedPath.nodes);
+  const edgeIds = new Set(combinedPath.edges);
+  
+  setSelectedPathNodes(pathNodeIds);
+  setSelectedPathEdges(edgeIds);
+  // برای سازگاری با سایر بخش‌ها اگر یک مسیر بود همان ایندکس را بفرستید
+  setAppSelectedPathIndex(newIndices.length === 1 ? newIndices[0] : null);
+  setActivePath(combinedPath);
+  
+  const activePathInfoData = {
+    nodes: combinedPath.nodes,
+    edges: combinedPath.edges,
+    edgeDurations: combinedPath._specificEdgeDurations || {},
+    edgeTotalDurations: combinedPath._specificTotalDurations || {},
+    edgeCounts: combinedPath._specificEdgeCounts || {},
+    frequency: combinedPath._frequency || combinedPath.frequency,
+  };
+  
+  computeLayout({
+    graphData,
+    colorPaletteKey: selectedColorPalette,
+    startEndNodes: startEndNodes || { start: [], end: [] },
+    filteredNodeIds: pathNodeIds,
+    filteredEdgeIds: edgeIds,
+    activePathInfo: activePathInfoData,
+    searchCasePathInfo: undefined,
+  });
+  // Clear highlight when selection changes (layout will reset edge styles)
+  setHighlightedPathIndex(null);
+  clearPathHighlight();
+}, [selectedPathIndices, sortedPaths, processedPaths, foundPaths, combinePaths, setSelectedPathNodes, setSelectedPathEdges, setAppSelectedPathIndex, setActivePath, computeLayout, graphData, selectedColorPalette, startEndNodes, selectedNodeIds, clearPathHighlight]);
 
   // --- Handle reset ---
   const resetPathfinding = useCallback(() => {
@@ -419,7 +506,7 @@ export default function PathfindingPage() {
     setFoundPaths([]);
     setProcessedPaths([]);
     setSortedPaths([]);
-    setSelectedPathIndex(null);
+    setSelectedPathIndices([]);
     setIsSorted(false);
     setActiveTab("Nodes");
     // Clear path highlighting in the app store
@@ -428,6 +515,9 @@ export default function PathfindingPage() {
     setAppSelectedPathIndex(null);
     // Clear active path in graph store
     setActivePath(null);
+    // Clear highlight state
+    setHighlightedPathIndex(null);
+    clearPathHighlight();
     
     // Restore original layout (with all selected nodes from filters)
     computeLayout({
@@ -439,22 +529,45 @@ export default function PathfindingPage() {
       activePathInfo: undefined,
       searchCasePathInfo: undefined,
     });
-  }, [setPathStartNodeId, setPathEndNodeId, setFoundPaths, setSelectedPathNodes, setSelectedPathEdges, setAppSelectedPathIndex, setActivePath, computeLayout, graphData, selectedColorPalette, startEndNodes, selectedNodeIds]);
+  }, [setPathStartNodeId, setPathEndNodeId, setFoundPaths, setSelectedPathNodes, setSelectedPathEdges, setAppSelectedPathIndex, setActivePath, computeLayout, graphData, selectedColorPalette, startEndNodes, selectedNodeIds, clearPathHighlight]);
+
+  // --- Handle highlight a single path ---
+  const handleHighlightPath = useCallback((index: number) => {
+    const allPaths = sortedPaths.length > 0 ? sortedPaths : (processedPaths.length > 0 ? processedPaths : (foundPaths as Path[]));
+    const path = allPaths[index] as ExtendedPath;
+    if (!path) return;
+
+    if (highlightedPathIndex === index) {
+      // Toggle off
+      setHighlightedPathIndex(null);
+      clearPathHighlight();
+    } else {
+      setHighlightedPathIndex(index);
+      highlightPath(path.nodes, path.edges, path);
+    }
+  }, [highlightedPathIndex, sortedPaths, processedPaths, foundPaths, highlightPath, clearPathHighlight]);
 
   // --- Handle remove path ---
   const removePath = useCallback((index: number) => {
-    // Remove the path from all path lists
+    // 1. Remove the path from all path lists
     setProcessedPaths((prev) => prev.filter((_, i) => i !== index));
     setSortedPaths((prev) => prev.filter((_, i) => i !== index));
     
-    // If the removed path was selected, clear selection and restore layout
-    if (selectedPathIndex === index) {
-      setSelectedPathIndex(null);
+    // 2. Update selected indices (remove the deleted one, and shift the larger ones down)
+    const newIndices = selectedPathIndices
+      .filter((i) => i !== index)
+      .map((i) => (i > index ? i - 1 : i));
+      
+    setSelectedPathIndices(newIndices);
+
+    // 3. Re-layout the graph based on the remaining selections
+    if (newIndices.length === 0) {
+      // If nothing is selected anymore, clear the graph
       setSelectedPathNodes(new Set());
       setSelectedPathEdges(new Set());
       setAppSelectedPathIndex(null);
+      setActivePath(null);
       
-      // Restore original layout
       computeLayout({
         graphData,
         colorPaletteKey: selectedColorPalette,
@@ -464,12 +577,39 @@ export default function PathfindingPage() {
         activePathInfo: undefined,
         searchCasePathInfo: undefined,
       });
-    } else if (selectedPathIndex !== null && selectedPathIndex > index) {
-      // Adjust selected index if it was after the removed item
-      setSelectedPathIndex(selectedPathIndex - 1);
+    } else {
+      // If there are still selected paths, combine them and update the graph
+      const allPaths = sortedPaths.length > 0 ? sortedPaths : (processedPaths.length > 0 ? processedPaths : (foundPaths as Path[]));
+      // فیلتر کردن مسیر حذف شده از لیست موجود
+      const newAllPaths = allPaths.filter((_, i) => i !== index);
+      const selectedExtPaths = newIndices.map(i => newAllPaths[i] as ExtendedPath);
+      
+      const combinedPath = combinePaths(selectedExtPaths);
+      if (combinedPath) {
+        setSelectedPathNodes(new Set(combinedPath.nodes));
+        setSelectedPathEdges(new Set(combinedPath.edges));
+        setAppSelectedPathIndex(newIndices.length === 1 ? newIndices[0] : null);
+        setActivePath(combinedPath);
+        
+        computeLayout({
+          graphData,
+          colorPaletteKey: selectedColorPalette,
+          startEndNodes: startEndNodes || { start: [], end: [] },
+          filteredNodeIds: new Set(combinedPath.nodes),
+          filteredEdgeIds: new Set(combinedPath.edges),
+          activePathInfo: {
+            nodes: combinedPath.nodes,
+            edges: combinedPath.edges,
+            edgeDurations: combinedPath._specificEdgeDurations || {},
+            edgeTotalDurations: combinedPath._specificTotalDurations || {},
+            edgeCounts: combinedPath._specificEdgeCounts || {},
+            frequency: combinedPath._frequency || combinedPath.frequency,
+          },
+          searchCasePathInfo: undefined,
+        });
+      }
     }
-  }, [selectedPathIndex, setSelectedPathNodes, setSelectedPathEdges, setAppSelectedPathIndex, computeLayout, graphData, selectedColorPalette, startEndNodes, selectedNodeIds]);
-
+  }, [selectedPathIndices, sortedPaths, processedPaths, foundPaths, combinePaths, setSelectedPathNodes, setSelectedPathEdges, setAppSelectedPathIndex, setActivePath, computeLayout, graphData, selectedColorPalette, startEndNodes, selectedNodeIds]);
   // --- Helper: Get Node Label ---
   const getNodeLabel = useCallback((id: string) =>
     allNodes.find((n) => n.id === id)?.data?.label || id, [allNodes]);
@@ -501,7 +641,7 @@ export default function PathfindingPage() {
                 </div>
                 <div className="flex flex-col">
                     <span className="text-[10px] text-slate-400 font-bold">مبدا</span>
-                    <span className={`text-xs font-medium truncate max-w-[150px] ${pathStartNodeId ? "text-slate-800" : "text-slate-400"}`}>
+                    <span className={`text-xs font-medium whitespace-nowrap max-w-[150px] ${pathStartNodeId ? "text-slate-800" : "text-slate-400"}`}>
                         {pathStartNodeId ? startNodeLabel : "انتخاب نشده"}
                     </span>
                 </div>
@@ -527,7 +667,7 @@ export default function PathfindingPage() {
                 </div>
                 <div className="flex flex-col">
                     <span className="text-[10px] text-slate-400 font-bold">مقصد</span>
-                    <span className={`text-xs font-medium truncate max-w-[150px] ${pathEndNodeId ? "text-slate-800" : "text-slate-400"}`}>
+                    <span className={`text-xs font-medium whitespace-nowrap max-w-[150px] ${pathEndNodeId ? "text-slate-800" : "text-slate-400"}`}>
                         {pathEndNodeId ? endNodeLabel : "انتخاب نشده"}
                     </span>
                 </div>
@@ -719,9 +859,11 @@ export default function PathfindingPage() {
                             <PathList
                                 paths={sortedPaths.length > 0 ? sortedPaths : processedPaths.length > 0 ? processedPaths : paths}
                                 allNodes={allNodes}
-                                selectedIndex={selectedPathIndex}
+                                selectedIndices={selectedPathIndices}
                                 onSelectPath={handleSelectPath}
                                 onRemovePath={removePath}
+                                onHighlightPath={selectedPathIndices.length > 1 ? handleHighlightPath : undefined}
+                                highlightedPathIndex={highlightedPathIndex}
                                 groupByType={true}
                                 emptyMessage="مسیر معتبری یافت نشد."
                             />

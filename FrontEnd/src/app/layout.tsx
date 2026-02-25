@@ -102,7 +102,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     allNodes,
     allEdges,
     computeLayout,
-    setIsPathFinding,
   } = useGraphStore();
   
   const { reset: resetRouteBuilder } = useRouteBuilderStore();
@@ -132,13 +131,11 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     Object.entries(TAB_THEMES).forEach(([key, value]) => {
       if(value.path === pathname) {
         setSidebarActiveTab(key as SidebarTab)
-        // Toggle pathfinding mode based on whether we're on the Routing tab
-        setIsPathFinding(key === "Routing")
         // Reset route builder when navigating away
         if (key !== "RouteBuilder") resetRouteBuilder();
       }
     })
-  },[pathname, setSidebarActiveTab, setIsPathFinding, resetRouteBuilder])
+  },[pathname, setSidebarActiveTab, resetRouteBuilder])
 
   // Effect: Compute layout when allNodes is populated or selectedNodeIds changes
   // Note: We watch allNodes/allEdges directly (not just length) to ensure we re-compute

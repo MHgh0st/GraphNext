@@ -118,6 +118,7 @@ function Graph({
     onPaneClick,
     injectGhostElements,
     activePath,
+    isHighlightModeActive,
   } = useGraphStore();
 
   // Get state from useAppStore
@@ -196,11 +197,12 @@ function Graph({
     (_event, edge) => {
       containerRef.current?.classList.remove("is-interacting");
       const data = edge.data as CustomEdgeData | undefined;
-      const overrideData = data?.tooltipOverrideData;
-      console.log("Selected Edge: ", data)
+      // In highlight mode, do NOT pass pre-baked overrideData (which is from the merged activePath).
+      // Let the store compute fresh tooltip values from highlightedActivePath.
+      const overrideData = isHighlightModeActive ? undefined : data?.tooltipOverrideData;
       handleEdgeSelect(edge.id, overrideData);
     },
-    [handleEdgeSelect]
+    [handleEdgeSelect, isHighlightModeActive]
   );
 
   const nodesForRender = useMemo(() => {
@@ -219,7 +221,22 @@ function Graph({
       const isGhost = (node.data as CustomNodeData)?.isGhost;
       const isPathHighlighted = selectedPathNodes.has(node.id);
       const isNodeSelected = node.id === selectedNodeId;
-      
+
+      // If highlightPath() has explicitly managed this node's style, trust it
+      // (detected by the _highlightActive sentinel — a boolean flag, NOT opacity,
+      //  because opacity may be undefined for nodes with no prior opacity set)
+      const isHighlightManaged = (node.data as any)?._highlightActive === true;
+      if (isHighlightManaged) {
+        return {
+          ...node,
+          type: (node.data?.type as string) || "activity",
+          data: {
+            ...node.data,
+            label: node.data?.label || node.id,
+          },
+        };
+      }
+
       let opacity = 1;
       let filter = "none";
 
@@ -230,7 +247,9 @@ function Graph({
         }
       } else if (isHighlightingPath) {
         if (!isPathHighlighted && !isGhost) {
-            opacity = 0.5;
+            // Stronger dimming so non-path nodes clearly fade into background
+            opacity = 0.1;
+            filter = "grayscale(1)";
         }
       }
 
@@ -256,6 +275,9 @@ function Graph({
     const showEdgeLabels = zoomLevel > EDGE_LABEL_ZOOM_THRESHOLD;
     const isSearchCaseMode = activeSideBar === "SearchCaseIds";
 
+    // Detect if any edge is in explicit highlight mode (once, outside the map)
+    const hasExplicitHighlight = layoutedEdges.some((e) => (e.data as any)?._highlighted === true);
+
     const processedEdges = layoutedEdges.map((edge) => {
       const edgeData = edge.data as CustomEdgeData | undefined;
       const isGhost = edgeData?.isGhost === true;
@@ -263,11 +285,14 @@ function Graph({
 
       const isEdgeBetweenPathNodes = selectedPathNodes.has(edge.source) && selectedPathNodes.has(edge.target);
       const isPathHighlighted = selectedPathEdges.has(edge.id) || isGhost || isEdgeBetweenPathNodes;
+      // Edge is explicitly managed by highlightPath() store action
+      const isHighlightManaged = (edgeData as any)?._highlighted === true;
       
       // In SearchCaseIds mode, edges in the path should be styled distinctively
       const isSearchPathEdge = isSearchCaseMode && (selectedPathEdges.has(edge.id) || isEdgeBetweenPathNodes);
 
       const isConnectedToSelectedNode = selectedNodeId && (edge.source === selectedNodeId || edge.target === selectedNodeId);
+
 
       let opacity = 1;
       let grayscale = false;
@@ -279,7 +304,8 @@ function Graph({
         }
       } else if (isPathFinding || isHighlightingPath) {
         if (!isPathHighlighted) {
-            opacity = 0.25;
+            opacity = hasExplicitHighlight ? 0.08 : 0.25;
+            grayscale = true;
         }
       }
 
@@ -302,6 +328,32 @@ function Graph({
         strokeDasharray = "5, 5"; // Dashed
         strokeWidth = 2.5;
         // animated = true;
+      }
+
+      // If highlightPath() is managing this edge, trust its stroke/dasharray/animated directly
+      if (isHighlightManaged) {
+        return {
+          ...edge,
+          label: finalLabel,
+          hidden: false,
+          animated: edge.animated, // preserve what highlightPath set
+          data: {
+            ...edge.data,
+            tooltipOverrideData: tooltipOverride,
+            isTooltipVisible: isTooltipActive,
+            isGhost: isGhost,
+            onEdgeSelect: (id: string) => {
+               handleEdgeSelect(id, tooltipOverride);
+            }
+          } as CustomEdgeData,
+          style: {
+            ...(edge.style || {}),
+            // Keep all style values from highlightPath, only override zIndex and transition
+            zIndex: isTooltipActive ? 1000 : 500,
+            transition: "all 0.4s ease",
+          },
+          focusable: true,
+        };
       }
 
       return {

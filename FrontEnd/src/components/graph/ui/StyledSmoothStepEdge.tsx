@@ -6,6 +6,23 @@ import {
 } from "@xyflow/react";
 import type { CSSProperties } from "react";
 
+// CSS keyframe for highlighted path flow animation
+const HIGHLIGHT_ANIMATION_STYLE = `
+  @keyframes pathEdgeFlow {
+    to { stroke-dashoffset: -24; }
+  }
+`;
+
+if (typeof document !== 'undefined') {
+  const styleId = 'path-edge-highlight-styles';
+  if (!document.getElementById(styleId)) {
+    const styleEl = document.createElement('style');
+    styleEl.id = styleId;
+    styleEl.textContent = HIGHLIGHT_ANIMATION_STYLE;
+    document.head.appendChild(styleEl);
+  }
+}
+
 // کامپوننت لیبل (بدون تغییر)
 const CustomEdgeLabel = ({
   text,
@@ -109,7 +126,8 @@ export const StyledSmoothStepEdge = (props: EdgeProps) => {
   };
 
   // تنظیمات نهایی استایل
-  const edgeStyle = {
+  const isHighlighted = data?._highlighted === true;
+  const edgeStyle: CSSProperties = {
     ...style,
     // برای ghost ها، اگر stroke از والد پاس داده شده (مثلا رنگ انتخاب) استفاده کن، وگرنه خاکستری
     stroke: isGhost 
@@ -118,7 +136,11 @@ export const StyledSmoothStepEdge = (props: EdgeProps) => {
     strokeWidth: style?.strokeWidth || 1.5,
     fill: "none",
     // اگر گوست است، حتما خط‌چین باشد، وگرنه از استایل والد بگیرد
-    strokeDasharray: isGhost ? "5, 5" : style?.strokeDasharray,
+    strokeDasharray: isGhost ? "5, 5" : (isHighlighted ? "8 4" : style?.strokeDasharray),
+    ...(isHighlighted ? {
+      animation: 'pathEdgeFlow 0.5s linear infinite',
+      strokeDashoffset: 0,
+    } : {}),
   };
 
   return (
