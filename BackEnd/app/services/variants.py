@@ -6,23 +6,40 @@ from app.services.utils import safe_calc_list_stats
 
 
 def calculate_case_aggregations(df_lazy: pl.LazyFrame) -> pl.LazyFrame:
-    """Groups by CaseID to create variant paths and timing lists."""
+    """Groups by CaseID to create variant paths and timing lists. Preserves UnitID."""
     print("🔄 [VARIANTS] calculate_case_aggregations: Grouping by CaseID...")
     result = df_lazy.group_by('CaseID').agg([
         pl.col('Activity').alias('Variant_Path'),
         pl.col('Seconds_From_Start').alias('Times_List'),
+        pl.col('UnitID').first().alias('UnitID'),  # Preserve the unit ID from first event
         (pl.col('Event_Rank').first() == 1).cast(pl.Int32).alias('Is_True_Start'),
         (pl.col('Event_Rank').last() == pl.col('Max_Rank').first()).cast(pl.Int32).alias('Is_True_End')
     ])
     print("✅ [VARIANTS] calculate_case_aggregations: Done.")
     return result
 
-def calculate_variant_frequencies(cases_agg: pl.LazyFrame) -> pl.DataFrame:
-    """Aggregates cases into unique variants and counts frequencies."""
+def calculate_variant_frequencies(
+    cases_agg: pl.LazyFrame,
+    unit_id: int = None,
+    unit_ids: list[int] | None = None,
+) -> pl.DataFrame:
+    """Aggregates cases into unique variants and counts frequencies.
+
+    Optionally filters by UnitID or a list of UnitIDs resolved from dimension values.
+    """
     print("🔄 [VARIANTS] calculate_variant_frequencies: Aggregating variants...")
+    
+    if unit_ids is not None:
+        print(f"   [VARIANTS] Filtering by UnitIDs: {unit_ids}")
+        cases_agg = cases_agg.filter(pl.col('UnitID').is_in(unit_ids))
+    elif unit_id is not None:
+        print(f"   [VARIANTS] Filtering by UnitID: {unit_id}")
+        cases_agg = cases_agg.filter(pl.col('UnitID') == unit_id)
+    
     variants_agg = cases_agg.group_by('Variant_Path').agg([
         pl.len().alias('Frequency'),
         pl.col('Times_List'),
+        pl.col('UnitID').first().alias('UnitID'),  # Get unit from first case with this variant
         pl.col('Is_True_Start').sum().alias('True_Start_Count'),
         pl.col('Is_True_End').sum().alias('True_End_Count')
     ])
@@ -135,13 +152,22 @@ def extract_nodes_heatmap(variants_df: pl.DataFrame, node_type: str, count_col: 
     print(f"✅ [VARIANTS] extract_nodes_heatmap: Found {len(selected_nodes)} {node_type} nodes.")
     return selected_nodes
 
-def get_variants_logic(df_lazy: pl.LazyFrame, target_coverage: float = 0.95):
+def get_variants_logic(
+    df_lazy: pl.LazyFrame,
+    target_coverage: float = 0.95,
+    unit_id: int = None,
+    unit_ids: list[int] | None = None,
+):
     print("=" * 60)
     print("🚀 [VARIANTS] get_variants_logic: Starting...")
+    if unit_ids is not None:
+        print(f"   [VARIANTS] UnitIDs filter applied: {unit_ids}")
+    elif unit_id is not None:
+        print(f"   [VARIANTS] Unit filter applied: {unit_id}")
     
     # 1. Aggregation
     cases_agg = calculate_case_aggregations(df_lazy)
-    variants_df = calculate_variant_frequencies(cases_agg)
+    variants_df = calculate_variant_frequencies(cases_agg, unit_id, unit_ids)
 
     if variants_df.is_empty():
         return pl.DataFrame(), pl.DataFrame(), [], []
@@ -156,6 +182,7 @@ def get_variants_logic(df_lazy: pl.LazyFrame, target_coverage: float = 0.95):
     wanted_columns = [
         'Variant_Path', 
         'Frequency', 
+        'UnitID',
         'True_Start_Count', 
         'True_End_Count', 
         'Percentage', 

@@ -1,6 +1,7 @@
 import msgpack
 import polars as pl
 from fastapi import APIRouter, Query, Response
+from app.config import DATABASE_URL
 from app.services import ETL, variants, graph
 import zstandard as zstd
 import pyarrow as pa
@@ -57,10 +58,57 @@ def dataframe_to_arrow_ipc(df: pl.DataFrame) -> bytes:
     
     return sink.getvalue()
 
+
+def _quote_sql_list(values: list[str]) -> str:
+    return ", ".join("'" + value.replace("'", "''") + "'" for value in values)
+
+
+def _resolve_unit_ids(
+    lev2_names: list[str] | None,
+    lev3_names: list[str] | None,
+) -> list[int] | None:
+    conditions = []
+    if lev2_names:
+        conditions.append(f'"LEV2_NAME" IN ({_quote_sql_list(lev2_names)})')
+    if lev3_names:
+        conditions.append(f'"LEV3_NAME" IN ({_quote_sql_list(lev3_names)})')
+
+    if not conditions:
+        return None
+
+    query = (
+        'SELECT DISTINCT "ID" FROM dim_unit '
+        f'WHERE {" AND ".join(conditions)}'
+    )
+    df = pl.read_database_uri(query=query, uri=DATABASE_URL, engine="connectorx")
+    return df["ID"].to_list()
+
+
+def _get_dimension_values() -> dict[str, list[str]]:
+    lev2_query = 'SELECT DISTINCT "LEV2_NAME" FROM dim_unit ORDER BY "LEV2_NAME"'
+    lev3_query = 'SELECT DISTINCT "LEV3_NAME" FROM dim_unit ORDER BY "LEV3_NAME"'
+
+    lev2_df = pl.read_database_uri(query=lev2_query, uri=DATABASE_URL, engine="connectorx")
+    lev3_df = pl.read_database_uri(query=lev3_query, uri=DATABASE_URL, engine="connectorx")
+
+    return {
+        "lev2_names": lev2_df["LEV2_NAME"].to_list(),
+        "lev3_names": lev3_df["LEV3_NAME"].to_list(),
+    }
+
+
+@router.get("/filters")
+async def get_graph_filters():
+    return _get_dimension_values()
+
+
 @router.post("/data")
 async def get_graph_data(
     start_date: str = Query(None),
     end_date: str = Query(None),
+    unit_id: int = Query(None),
+    lev2_names: list[str] = Query(None),
+    lev3_names: list[str] = Query(None),
     weight_metric: str = Query("cases"),
     time_unit: str = Query("d"),
     min_cases: int = Query(None),
@@ -71,6 +119,9 @@ async def get_graph_data(
 ):
     print("=" * 80)
     print("🌐 [API] POST /api/graph/data called (Arrow IPC + MsgPack + Zstd)")
+    print(f"   [API] Unit filter: {unit_id}")
+    print(f"   [API] LEV2 filters: {lev2_names}")
+    print(f"   [API] LEV3 filters: {lev3_names}")
     print("=" * 80)
     
     try:
@@ -79,10 +130,35 @@ async def get_graph_data(
         lf = ETL.get_lazyframe(start_date, end_date) 
         print("✅ [API] Step 1: ETL complete.\n")
         
+        # Resolve dimension-based unit filters before variants calc
+        selected_unit_ids = _resolve_unit_ids(lev2_names, lev3_names)
+        if unit_id is not None and selected_unit_ids is not None:
+            effective_unit_ids = [uid for uid in selected_unit_ids if uid == unit_id]
+        elif unit_id is not None:
+            effective_unit_ids = [unit_id]
+        else:
+            effective_unit_ids = selected_unit_ids
+
+        print(f"   [API] Resolved UnitIDs from dimensions: {selected_unit_ids}")
+        print(f"   [API] Effective UnitIDs: {effective_unit_ids}")
+
+        # Check if data is empty
+        row_count = lf.select(pl.len()).collect().item()
+        if row_count == 0:
+            print("⚠️ [API] WARNING: ETL returned 0 rows.")
+            if start_date or end_date:
+                print("   [API] ℹ️ HINT: Your database uses Persian calendar dates (1403/01/04...)")
+                print("   [API]    Try removing date filters or use Persian calendar format (YYYY/MM/DD)")
+            else:
+                print("   [API] ℹ️ Database appears to be empty or not loaded.")
+        
         # 2. Variants Calculation
         print("📦 [API] Step 2: Calculating variants...")
         pareto_df, all_vars_df, start_nodes, end_nodes = variants.get_variants_logic(
-            lf, target_coverage
+            lf,
+            target_coverage,
+            unit_id=unit_id,
+            unit_ids=effective_unit_ids,
         )
         print(f"✅ [API] Step 2: Variants complete. Pareto DF shape: {pareto_df.shape}\n")
         

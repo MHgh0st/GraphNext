@@ -89,6 +89,7 @@ export function parseVariantsTable(
       Percentage: table.getChild("Percentage")?.get(i) as number,
       Avg_Timings,
       Total_Timings,
+      UnitID:     table.getChild("UnitID")?.get(i) as number | undefined,
     };
 
     const cumCoverage = table.getChild("cum_coverage")?.get(i) as number;

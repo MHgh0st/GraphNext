@@ -43,7 +43,7 @@ export class ApiError extends Error {
 export interface FetchOptions<TBody = unknown> {
   method?: HttpMethod;
   body?: TBody;
-  params?: Record<string, string | number | boolean | null | undefined>;
+  params?: Record<string, string | number | boolean | null | undefined | Array<string | number | boolean>>;
   headers?: Record<string, string>;
   timeout?: number;
   responseType?: ResponseType;
@@ -64,12 +64,19 @@ export interface ApiResponse<T> {
 /** Build a full URL with optional query parameters. */
 export function buildUrl(
   endpoint: string,
-  params?: Record<string, string | number | boolean | null | undefined>
+  params?: Record<string, string | number | boolean | null | undefined | Array<string | number | boolean>>
 ): string {
   const url = new URL(endpoint, API_BASE_URL);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
-      if (value !== null && value !== undefined) {
+      if (value === null || value === undefined) continue;
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item !== null && item !== undefined) {
+            url.searchParams.append(key, String(item));
+          }
+        }
+      } else {
         url.searchParams.append(key, String(value));
       }
     }

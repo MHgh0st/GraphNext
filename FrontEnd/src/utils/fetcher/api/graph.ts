@@ -3,7 +3,7 @@
  */
 
 import type { FilterTypes, ProcessMiningData } from "../../../types/types";
-import { ApiError, buildUrl } from "../core";
+import { ApiError, buildUrl, get } from "../core";
 import { parseGraphResponse } from "../parsers";
 import { showToast } from "@/components/Toast";
 
@@ -47,6 +47,11 @@ export const graphApi = {
       throw error;
     }
   },
+
+  getDimensions: async (): Promise<{ lev2_names: string[]; lev3_names: string[] }> => {
+    const response = await get<{ lev2_names: string[]; lev3_names: string[] }>("/api/graph/filters");
+    return response.data;
+  },
 };
 
 // ============================================================================
@@ -56,13 +61,16 @@ export const graphApi = {
 /** Convert `FilterTypes` into the query-param shape expected by the backend. */
 function buildQueryParams(
   filters: Partial<FilterTypes>
-): Record<string, string | number | boolean | null | undefined> {
+): Record<string, string | number | boolean | null | undefined | Array<string>> {
   const outlierPct = filters.outlierPrecentage ?? 5;
   const targetCoverage = 1 - outlierPct / 100;
 
   return {
     start_date:      filters.dateRange?.start,
     end_date:        filters.dateRange?.end,
+    unit_id:         filters.unitId,
+    lev2_names:      filters.lev2Names?.length ? filters.lev2Names : undefined,
+    lev3_names:      filters.lev3Names?.length ? filters.lev3Names : undefined,
     weight_metric:   filters.weightFilter,
     time_unit:       filters.timeUnitFilter,
     min_cases:       filters.minCaseCount,

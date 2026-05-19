@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@heroui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@heroui/popover";
 import { Chip } from "@heroui/chip";
+import { Select, SelectItem } from "@heroui/select";
 import {
   SlidersHorizontal,
   Filter,
@@ -50,24 +51,61 @@ export default function Navbar({
     start: null,
     end: null,
   });
+  const [lev2Options, setLev2Options] = useState<string[]>([]);
+  const [lev3Options, setLev3Options] = useState<string[]>([]);
+  const [selectedLev2Names, setSelectedLev2Names] = useState<string[]>([]);
+  const [selectedLev3Names, setSelectedLev3Names] = useState<string[]>([]);
+  const [isLoadingDimensions, setIsLoadingDimensions] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
   // همگام‌سازی استیت با فیلترهای فعلی هنگام تغییر آن‌ها
   useEffect(() => {
-    if (currentFilters) {
-      try {
-        if (currentFilters.dateRange.start && currentFilters.dateRange.end) {
-          setDateRange({
-            start: parseDate(currentFilters.dateRange.start),
-            end: parseDate(currentFilters.dateRange.end),
-          });
-        }
+    if (!currentFilters) return;
 
-      } catch (e) {
-        console.error("Error parsing dates from filters", e);
+    try {
+      if (currentFilters.dateRange.start && currentFilters.dateRange.end) {
+        setDateRange({
+          start: parseDate(currentFilters.dateRange.start),
+          end: parseDate(currentFilters.dateRange.end),
+        });
       }
+    } catch (e) {
+      console.error("Error parsing dates from filters", e);
     }
+
+    setSelectedLev2Names(currentFilters.lev2Names ?? []);
+    setSelectedLev3Names(currentFilters.lev3Names ?? []);
   }, [currentFilters]);
+
+  useEffect(() => {
+    let active = true;
+    setIsLoadingDimensions(true);
+
+    api.graph
+      .getDimensions()
+      .then((data) => {
+        if (!active) return;
+        setLev2Options(data.lev2_names ?? []);
+        setLev3Options(data.lev3_names ?? []);
+      })
+      .catch((error) => {
+        console.error("Error loading dimension filters:", error);
+      })
+      .finally(() => {
+        if (active) setIsLoadingDimensions(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const remainingLev2Options = lev2Options.filter(
+    (option) => !selectedLev2Names.includes(option)
+  );
+  const remainingLev3Options = lev3Options.filter(
+    (option) => !selectedLev3Names.includes(option)
+  );
 
   // Load graph data from API
   // Accepts filters as parameter to avoid stale closure issues
@@ -134,6 +172,8 @@ export default function Navbar({
         start: startIso,
         end: endIso,
       },
+      lev2Names: selectedLev2Names,
+      lev3Names: selectedLev3Names,
     };
 
     onFilterUpdate(newFilters);
@@ -223,8 +263,8 @@ export default function Navbar({
             </Button>
           </PopoverTrigger>
 
-          <PopoverContent className="text-right w-[320px] p-0 border border-slate-100 shadow-2xl rounded-2xl overflow-hidden">
-            <div dir="ltr" className="flex flex-col">
+          <PopoverContent className="text-right w-[320px] p-0 border border-slate-100 shadow-2xl rounded-2xl max-h-[80vh] overflow-y-auto">
+            <div dir="ltr" className="flex flex-col min-h-0">
               {/* Header */}
               <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                 <div className="p-1.5 bg-white border border-slate-200 rounded-lg shadow-sm">
@@ -236,7 +276,7 @@ export default function Navbar({
               </div>
 
               {/* Body */}
-              <div className="p-4 flex flex-col gap-5 bg-white">
+              <div className="p-4 flex flex-col gap-5 bg-white overflow-y-auto min-h-0 max-h-[calc(80vh-120px)]">
                 {/* 1. Date Range Section */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2 text-slate-500 mb-1">
@@ -250,6 +290,109 @@ export default function Navbar({
                   />
                 </div>
 
+                <div className="flex flex-col gap-4 pt-2 border-t border-slate-100">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-slate-500 mb-1">
+                      <span className="text-[11px] font-bold">فیلتر سطح 2</span>
+                    </div>
+
+                    {selectedLev2Names.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {selectedLev2Names.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() =>
+                              setSelectedLev2Names((prev) => prev.filter((value) => value !== item))
+                            }
+                            className="inline-flex items-center gap-2 rounded-full bg-blue-100 text-blue-800 text-[11px] px-2 py-1 transition hover:bg-blue-200"
+                          >
+                            <span>{item}</span>
+                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-200 text-blue-700">
+                              ×
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <Select
+                      label="فیلتر سطح 2"
+                      placeholder="انتخاب کنید"
+                      size="sm"
+                      selectionMode="multiple"
+                      selectedKeys={new Set(selectedLev2Names)}
+                      renderValue={(items) =>
+                        items.length ? <span>{items.length} انتخاب شده</span> : <span className="text-slate-400">انتخاب کنید</span>
+                      }
+                      classNames={{
+                        trigger: "bg-white/80 border-slate-200 hover:border-blue-300 focus:border-blue-500 rounded-xl shadow-sm",
+                        value: "text-slate-700 text-xs",
+                      }}
+                      onSelectionChange={(keys) =>
+                        setSelectedLev2Names(Array.from(keys).map(String))
+                      }
+                      disabled={isLoadingDimensions || lev2Options.length === 0 || remainingLev2Options.length === 0}
+                    >
+                      {remainingLev2Options.map((option) => (
+                        <SelectItem key={option} textValue={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-slate-500 mb-1">
+                      <span className="text-[11px] font-bold">فیلتر سطح 3</span>
+                    </div>
+
+                    {selectedLev3Names.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {selectedLev3Names.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() =>
+                              setSelectedLev3Names((prev) => prev.filter((value) => value !== item))
+                            }
+                            className="inline-flex items-center gap-2 rounded-full bg-blue-100 text-blue-800 text-[11px] px-2 py-1 transition hover:bg-blue-200"
+                          >
+                            <span>{item}</span>
+                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-200 text-blue-700">
+                              ×
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <Select
+                      label="فیلتر سطح 3"
+                      placeholder="انتخاب کنید"
+                      size="sm"
+                      selectionMode="multiple"
+                      selectedKeys={new Set(selectedLev3Names)}
+                      renderValue={(items) =>
+                        items.length ? <span>{items.length} انتخاب شده</span> : <span className="text-slate-400">انتخاب کنید</span>
+                      }
+                      classNames={{
+                        trigger: "bg-white/80 border-slate-200 hover:border-blue-300 focus:border-blue-500 rounded-xl shadow-sm",
+                        value: "text-slate-700 text-xs",
+                      }}
+                      onSelectionChange={(keys) =>
+                        setSelectedLev3Names(Array.from(keys).map(String))
+                      }
+                      disabled={isLoadingDimensions || lev3Options.length === 0 || remainingLev3Options.length === 0}
+                    >
+                      {remainingLev3Options.map((option) => (
+                        <SelectItem key={option} textValue={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
 
               </div>
 

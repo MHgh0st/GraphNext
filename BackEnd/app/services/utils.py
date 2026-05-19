@@ -1,7 +1,7 @@
 import polars as pl
 import numpy as np
 from typing import List, Any
-
+from collections import Counter
 
 def format_seconds_to_days_expr(col_name: str) -> pl.Expr:
     """
@@ -18,63 +18,36 @@ def format_seconds_to_days_expr(col_name: str) -> pl.Expr:
         )
     )
 
-def safe_calc_list_stats(times_series: pl.Series, func: Any) -> List[List[float]]:
+def _numpy_calc(times_series: pl.Series, func: Any) -> List[List[float]]:
     """
-    Helper to calculate stats (mean/sum) on a list of lists using NumPy.
-    
-    IMPORTANT: times_series contains nested lists - each element is a list of lists,
-    where each inner list represents the timing data from one case.
-    
-    For example, if 3 cases share the same variant with activities [A, B, C]:
-    - Case 1: [0, 100, 300] (times at each activity)
-    - Case 2: [0, 120, 280]
-    - Case 3: [0, 90, 350]
-    
-    We need to compute element-wise mean: [0, 103.33, 310]
+    کد اورجینال و پایدار خود شما (به عنوان لایه پشتیبان تضمینی)
     """
-    print(f"🔍 [UTILS] safe_calc_list_stats: Processing {len(times_series)} rows...")
-    
     rows = times_series.to_list()
     results = []
     
     for idx, case_times_list in enumerate(rows):
-        # case_times_list is a list of lists, e.g. [[0, 100, 300], [0, 120, 280], [0, 90, 350]]
         if not case_times_list:
-            print(f"   [UTILS] Row {idx}: Empty list, appending []")
             results.append([])
             continue
-        
         try:
-            # Debug: show structure of first few rows
-            if idx < 3:
-                print(f"   [UTILS] Row {idx}: Got {len(case_times_list)} cases, first case has {len(case_times_list[0]) if case_times_list and case_times_list[0] else 0} times")
-            
-            # Filter out empty inner lists and get only lists with matching lengths
-            valid_lists = [lst for lst in case_times_list if lst and len(lst) > 0]
+            valid_lists = [lst for lst in case_times_list if lst and isinstance(lst, list) and len(lst) > 0]
             
             if not valid_lists:
-                print(f"   [UTILS] Row {idx}: No valid inner lists found, appending []")
                 results.append([])
                 continue
             
-            # Find the most common length (the expected path length)
             lengths = [len(lst) for lst in valid_lists]
             if not lengths:
                 results.append([])
                 continue
                 
-            # Use the most common length
-            from collections import Counter
             most_common_length = Counter(lengths).most_common(1)[0][0]
-            
-            # Filter to only lists with the most common length
             matching_lists = [lst for lst in valid_lists if len(lst) == most_common_length]
             
             if not matching_lists:
                 results.append([])
                 continue
             
-            # Now we can safely create a 2D numpy array
             arr = np.array(matching_lists, dtype=np.float64)
             
             if arr.size > 0 and arr.ndim == 2:
@@ -83,18 +56,106 @@ def safe_calc_list_stats(times_series: pl.Series, func: Any) -> List[List[float]
                     res = [res]
                 results.append([round(x, 2) for x in res])
             else:
-                # 1D array (single case) - just use the values directly
                 if arr.ndim == 1:
                     results.append([round(x, 2) for x in arr.tolist()])
                 else:
                     results.append([])
                     
-        except Exception as e:
-            print(f"❌ [UTILS] Row {idx}: Exception: {e}")
+        except Exception:
             results.append([])
-    
-    # Summary
-    non_empty = sum(1 for r in results if len(r) > 0)
-    print(f"✅ [UTILS] safe_calc_list_stats: Done. {non_empty}/{len(results)} rows have non-empty results.")
-    
+            
     return results
+
+def _vectorized_calc(times_series: pl.Series, func: Any) -> List[List[float]]:
+    """
+    لایه پردازش پرسرعت و موازی با موتور Rust پولارز
+    """
+    n_rows = len(times_series)
+    if n_rows == 0:
+        return []
+        
+    is_mean = (func is np.mean) or getattr(func, '__name__', '') == 'mean'
+    
+    df = times_series.to_frame("Times_List")
+    if hasattr(df, "with_row_index"):
+        df = df.with_row_index("idx")
+    else:
+        df = df.with_row_count("idx")
+        
+    df = df.lazy()
+    
+    # تشخیص بسیار سخت‌گیرانه Type برای جلوگیری از ارور UInt32
+    dtype_str = str(times_series.dtype)
+    needs_explode = "List(List" in dtype_str
+        
+    if needs_explode:
+        exploded = df.explode("Times_List")
+    else:
+        exploded = df
+        
+    exploded = exploded.filter(
+        pl.col("Times_List").is_not_null() & 
+        (pl.col("Times_List").list.len() > 0)
+    )
+    
+    exploded = exploded.with_columns(
+        pl.col("Times_List").list.len().alias("length")
+    )
+    
+    mode_lengths = exploded.group_by("idx").agg(
+        pl.col("length").mode().list.first().alias("mode_len")
+    )
+    
+    valid_rows = exploded.join(mode_lengths, on="idx")
+    valid_rows = valid_rows.filter(pl.col("length") == pl.col("mode_len"))
+    
+    valid_df = valid_rows.collect()
+    
+    if valid_df.is_empty():
+        return [[] for _ in range(n_rows)]
+        
+    structs = valid_df.select(["idx", pl.col("Times_List").list.to_struct()])
+    unnested = structs.unnest("Times_List")
+    
+    value_cols = [c for c in unnested.columns if c != "idx"]
+    if not value_cols:
+         return [[] for _ in range(n_rows)]
+         
+    if is_mean:
+        aggs = [pl.col(c).cast(pl.Float64).mean().round(2) for c in value_cols]
+    else:
+        aggs = [pl.col(c).cast(pl.Float64).sum().round(2) for c in value_cols]
+        
+    grouped = unnested.group_by("idx").agg(aggs)
+    
+    def sort_key(col_name):
+        try:
+            return int(col_name.split('_')[1])
+        except:
+            return 0
+            
+    sorted_cols = sorted(value_cols, key=sort_key)
+    
+    grouped = grouped.select(
+        "idx",
+        pl.concat_list([pl.col(c) for c in sorted_cols]).alias("Result")
+    )
+    
+    base_df = pl.DataFrame({"idx": range(n_rows)})
+    final_df = base_df.join(grouped, on="idx", how="left").sort("idx")
+    
+    results_list = final_df["Result"].to_list()
+    return [x if x is not None else [] for x in results_list]
+
+def safe_calc_list_stats(times_series: pl.Series, func: Any) -> List[List[float]]:
+    """
+    تابع هیبرید: تلاش برای نهایت سرعت، و پشتیبان‌گیری ایمن در صورت بروز خطای تایپ
+    """
+    print(f"🔍 [UTILS] safe_calc_list_stats: Processing {len(times_series)} rows...")
+    try:
+        # 1. تلاش برای استفاده از موتور پرسرعت Polars
+        return _vectorized_calc(times_series, func)
+    except Exception as e:
+        # 2. در صورت بروز هرگونه خطا (مثل ارور Type)، برنامه Crash نمیکند و از کد تضمینی Numpy استفاده می‌کند
+        print(f"⚠️ [UTILS] Fast-engine encountered a schema mismatch ({e}). Automatically routing to reliable Numpy fallback...")
+        return _numpy_calc(times_series, func)

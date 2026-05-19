@@ -1,11 +1,11 @@
-fastapi>=0.109.0         # فریم‌ورک جدید شما (جایگزین جنگو)
-uvicorn[standard]        # سرور اجرای برنامه (بسیار سریع و Asynchronous)
-pydantic-settings        # برای مدیریت تنظیمات و متغیرهای محیطی (.env)
-polars                   # پردازش داده (حفظ شود)
-connectorx               # خواندن سریع از دیتابیس (حفظ شود - عالی برای FastAPI)
-pyarrow>=21.0.0,<22.0.0    # موتور پولارز - pinned to match JS apache-arrow 21.x
-numpy                    # محاسبات ریاضی (حفظ شود)
-psycopg2-binary          # درایور دیتابیس (می‌تواند بماند)
+fastapi>=0.109.0         
+uvicorn[standard]        
+pydantic-settings        
+polars                   
+connectorx               
+pyarrow>=21.0.0,<22.0.0    
+numpy                    
+psycopg2-binary          
 adbc-driver-postgresql
 msgpack
 zstandard

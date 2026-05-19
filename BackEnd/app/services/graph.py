@@ -13,8 +13,18 @@ min_cases: Optional[int] = None, max_cases: Optional[int] = None, min_mean_time:
     print(f"   [GRAPH] Input DataFrame columns: {variants_df.columns}")
     
     if variants_df.is_empty():
-        print("⚠️ [GRAPH] Input DataFrame is empty. Returning [].")
-        return []
+        print("⚠️ [GRAPH] Input DataFrame is empty. Returning empty DataFrame.")
+        # Return empty DataFrame with expected schema
+        return pl.DataFrame({
+            'Source_Activity': pl.Series([], dtype=pl.Utf8),
+            'Target_Activity': pl.Series([], dtype=pl.Utf8),
+            'Mean_Duration_Seconds': pl.Series([], dtype=pl.Float64),
+            'Tooltip_Total_Time': pl.Series([], dtype=pl.Utf8),
+            'Tooltip_Mean_Time': pl.Series([], dtype=pl.Utf8),
+            'Weight_Value': pl.Series([], dtype=pl.Float64),
+            'Edge_Label': pl.Series([], dtype=pl.Utf8),
+            'Case_Count': pl.Series([], dtype=pl.Int64),
+        })
 
     # Debug: Check list lengths for Variant_Path and Avg_Timings
     print("🔍 [GRAPH] Checking list lengths for Variant_Path and Avg_Timings...")

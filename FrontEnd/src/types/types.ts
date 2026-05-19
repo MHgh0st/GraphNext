@@ -44,6 +44,12 @@ export interface FilterTypes {
   timeUnitFilter: "s" | "m" | "h" | "d" | "w";
   /** Outlier percentage for filtering */
   outlierPrecentage: number | null;
+  /** Optional: Unit ID to filter by specific organizational unit */
+  unitId: number | null;
+  /** Optional: Selected LEV2_NAME values to filter by organizational unit dimension */
+  lev2Names?: string[];
+  /** Optional: Selected LEV3_NAME values to filter by organizational unit dimension */
+  lev3Names?: string[];
 }
 
 // ============================================================================
@@ -177,6 +183,8 @@ export interface Variant {
   Total_Timings: number[];
   /** Percentage of total cases this variant represents */
   Percentage: number;
+  /** Optional: Unit ID for cases in this variant */
+  UnitID?: number;
 }
 
 /**
