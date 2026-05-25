@@ -8,6 +8,38 @@
  */
 
 // ============================================================================
+// SCHEMA TYPES
+// ============================================================================
+
+/**
+ * DimensionLevel
+ * 
+ * Information about a single dimension level in the database
+ */
+export interface DimensionLevel {
+  /** Zero-based index of this level (0, 1, 2, ...) */
+  index: number;
+  /** Key used in API params and state (lev1_names, lev2_names, ...) */
+  key: string;
+  /** Actual database column name (LEV1_NAME, LEV2_NAME, ...) */
+  columnName: string;
+  /** Display label (سطح 1, سطح 2, ...) */
+  label: string;
+}
+
+/**
+ * DimensionSchema
+ * 
+ * Metadata about all available dimension levels in the database
+ */
+export interface DimensionSchema {
+  /** Total number of levels in the database */
+  totalLevels: number;
+  /** Detailed information about each level */
+  levels: DimensionLevel[];
+}
+
+// ============================================================================
 // FILTER TYPES
 // ============================================================================
 
@@ -17,10 +49,16 @@
  * Configuration object for data filtering operations.
  * Sent from renderer to main process via IPC for Python processing.
  * 
+ * Now supports dynamic dimension levels via dimensionFilters Record.
+ * 
  * @example
  * ```ts
  * const filters: FilterTypes = {
  *   dateRange: { start: "2024-01-01", end: "2024-12-31" },
+ *   dimensionFilters: {
+ *     "lev1_names": ["value1", "value2"],
+ *     "lev2_names": ["value3"]
+ *   },
  *   minCaseCount: 10,
  *   maxCaseCount: 1000,
  *   meanTimeRange: { min: 0, max: 3600 },
@@ -32,6 +70,8 @@
 export interface FilterTypes {
   /** Date range for filtering events (ISO date strings) */
   dateRange: { start: string; end: string };
+  /** Dynamic dimension filters - key is like "lev1_names", value is selected values */
+  dimensionFilters: Record<string, string[]>;
   /** Minimum number of cases for an edge to be included */
   minCaseCount: number | null;
   /** Maximum number of cases for an edge to be included */
@@ -46,10 +86,6 @@ export interface FilterTypes {
   outlierPrecentage: number | null;
   /** Optional: Unit ID to filter by specific organizational unit */
   unitId: number | null;
-  /** Optional: Selected LEV2_NAME values to filter by organizational unit dimension */
-  lev2Names?: string[];
-  /** Optional: Selected LEV3_NAME values to filter by organizational unit dimension */
-  lev3Names?: string[];
 }
 
 // ============================================================================

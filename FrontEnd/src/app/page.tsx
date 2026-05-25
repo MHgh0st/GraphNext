@@ -199,8 +199,14 @@ function Filters() {
         outlierPrecentage: Array.isArray(outlierPercentage)
           ? outlierPercentage[0]
           : outlierPercentage,
+        lev1Names: currentFilters?.lev1Names ?? undefined,
         lev2Names: currentFilters?.lev2Names ?? undefined,
         lev3Names: currentFilters?.lev3Names ?? undefined,
+        lev4Names: currentFilters?.lev4Names ?? undefined,
+        lev5Names: currentFilters?.lev5Names ?? undefined,
+        lev6Names: currentFilters?.lev6Names ?? undefined,
+        lev7Names: currentFilters?.lev7Names ?? undefined,
+        lev8Names: currentFilters?.lev8Names ?? undefined,
       };
 
       // Update filters in store

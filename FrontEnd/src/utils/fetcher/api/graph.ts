@@ -1,13 +1,42 @@
 /**
  * Graph API — fetches and parses the main process-mining graph data.
+ * 
+ * Now supports dynamic dimension levels via schema detection.
  */
 
-import type { FilterTypes, ProcessMiningData } from "../../../types/types";
+import type { FilterTypes, ProcessMiningData, DimensionSchema } from "../../../types/types";
 import { ApiError, buildUrl, get } from "../core";
 import { parseGraphResponse } from "../parsers";
 import { showToast } from "@/components/Toast";
 
+type DimensionOptions = Record<string, string[]>;
+
+type DimensionQueryParams = Record<string, string[]>;
+
 export const graphApi = {
+  /**
+   * Fetch database schema - returns available dimension levels dynamically
+   */
+  getSchema: async (): Promise<DimensionSchema> => {
+    try {
+      const response = await get<DimensionSchema>("/api/graph/schema");
+      console.log("✅ [SCHEMA] Retrieved schema:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("❌ [SCHEMA] Error fetching schema:", error);
+      // Fallback to 8 levels if schema endpoint fails
+      return {
+        totalLevels: 8,
+        levels: Array.from({ length: 8 }, (_, i) => ({
+          index: i,
+          key: `lev${i + 1}_names`,
+          columnName: `LEV${i + 1}_NAME`,
+          label: `سطح ${i + 1}`,
+        })),
+      };
+    }
+  },
+
   /**
    * Fetch graph data with filters.
    *
@@ -48,8 +77,11 @@ export const graphApi = {
     }
   },
 
-  getDimensions: async (): Promise<{ lev2_names: string[]; lev3_names: string[] }> => {
-    const response = await get<{ lev2_names: string[]; lev3_names: string[] }>("/api/graph/filters");
+  /**
+   * Fetch available dimensions based on current filters (supports dynamic levels)
+   */
+  getDimensions: async (filters?: DimensionQueryParams): Promise<DimensionOptions> => {
+    const response = await get<DimensionOptions>("/api/graph/filters", filters || {});
     return response.data;
   },
 };
@@ -65,12 +97,10 @@ function buildQueryParams(
   const outlierPct = filters.outlierPrecentage ?? 5;
   const targetCoverage = 1 - outlierPct / 100;
 
-  return {
+  const params: Record<string, string | number | boolean | null | undefined | Array<string>> = {
     start_date:      filters.dateRange?.start,
     end_date:        filters.dateRange?.end,
     unit_id:         filters.unitId,
-    lev2_names:      filters.lev2Names?.length ? filters.lev2Names : undefined,
-    lev3_names:      filters.lev3Names?.length ? filters.lev3Names : undefined,
     weight_metric:   filters.weightFilter,
     time_unit:       filters.timeUnitFilter,
     min_cases:       filters.minCaseCount,
@@ -79,4 +109,15 @@ function buildQueryParams(
     max_mean_time:   filters.meanTimeRange?.max,
     target_coverage: targetCoverage,
   };
+
+  // Add dimension filters dynamically
+  if (filters.dimensionFilters) {
+    Object.entries(filters.dimensionFilters).forEach(([key, values]) => {
+      if (values && values.length > 0) {
+        params[key] = values;
+      }
+    });
+  }
+
+  return params;
 }

@@ -2,30 +2,31 @@
  * @component Navbar
  * @description
  * نوار ابزار سراسری که فیلترهای اصلی را در یک منوی کشویی (Dropdown) مدیریت می‌کند.
+ * اکنون با پشتیبانی از سطوح دیمنژن دینامیک (هر تعداد سطح)
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@heroui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@heroui/popover";
 import { Chip } from "@heroui/chip";
-import { Select, SelectItem } from "@heroui/select";
+import { Checkbox } from "@heroui/checkbox";
 import {
   SlidersHorizontal,
   Filter,
   CalendarRange,
   ListFilter,
   Check,
+  Plus,
+  Minus,
 } from "lucide-react";
 import moment from "moment-jalaali";
 import { DateValue, parseDate } from "@internationalized/date";
-import PersianRangeDatePicker from "./sideBarCards/RangeDatePicker"; // ایمپورت کامپوننت تاریخ
-import { FilterTypes } from "../types/types";
-import {useAppStore} from "@/hooks/useAppStore";
-import {useGraphStore} from "@/store/useGraphStore";
+import PersianRangeDatePicker from "./sideBarCards/RangeDatePicker";
+import { FilterTypes, DimensionSchema } from "../types/types";
+import { useAppStore } from "@/hooks/useAppStore";
+import { useGraphStore } from "@/store/useGraphStore";
 import api from "@/utils/fetcher";
 
-
-// تنظیمات مومنت
 moment.loadPersian({ dialect: "persian-modern", usePersianDigits: false });
 
 interface NavbarProps {
@@ -39,86 +40,105 @@ export default function Navbar({
   isLoading = false,
   currentFilters,
 }: NavbarProps) {
-  // Get state from stores
-  const { filters, setIsLoading, setProcessedData } = useAppStore();
+  const { setIsLoading, setProcessedData } = useAppStore();
   const { processInitialData } = useGraphStore();
 
-  // State برای فیلترها
+  // Schema state - holds database dimension information
+  const [schema, setSchema] = useState<DimensionSchema | null>(null);
+  const [schemaLoading, setSchemaLoading] = useState(true);
+
   const [dateRange, setDateRange] = useState<{
     start: DateValue | null;
     end: DateValue | null;
-  }>({
-    start: null,
-    end: null,
+  }>({ start: null, end: null });
+  
+  const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false);
+  const [isDimensionFilterOpen, setIsDimensionFilterOpen] = useState(false);
+
+  const [scopedDimensionOptions, setScopedDimensionOptions] = useState<Record<string, string[]>>({
+    root: [],
   });
-  const [lev2Options, setLev2Options] = useState<string[]>([]);
-  const [lev3Options, setLev3Options] = useState<string[]>([]);
-  const [selectedLev2Names, setSelectedLev2Names] = useState<string[]>([]);
-  const [selectedLev3Names, setSelectedLev3Names] = useState<string[]>([]);
-  const [isLoadingDimensions, setIsLoadingDimensions] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
+  
+  // Working and committed dimension filters - now dynamic!
+  const [workingDimensions, setWorkingDimensions] = useState<Record<string, string[]>>({});
+  const [selectedDimensions, setSelectedDimensions] = useState<Record<string, string[]>>({});
+  
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
-  // همگام‌سازی استیت با فیلترهای فعلی هنگام تغییر آن‌ها
-  useEffect(() => {
-    if (!currentFilters) return;
-
-    try {
-      if (currentFilters.dateRange.start && currentFilters.dateRange.end) {
-        setDateRange({
-          start: parseDate(currentFilters.dateRange.start),
-          end: parseDate(currentFilters.dateRange.end),
-        });
-      }
-    } catch (e) {
-      console.error("Error parsing dates from filters", e);
-    }
-
-    setSelectedLev2Names(currentFilters.lev2Names ?? []);
-    setSelectedLev3Names(currentFilters.lev3Names ?? []);
-  }, [currentFilters]);
-
+  // Fetch database schema on component mount
   useEffect(() => {
     let active = true;
-    setIsLoadingDimensions(true);
-
     api.graph
-      .getDimensions()
-      .then((data) => {
+      .getSchema()
+      .then((schemaData) => {
         if (!active) return;
-        setLev2Options(data.lev2_names ?? []);
-        setLev3Options(data.lev3_names ?? []);
+        setSchema(schemaData);
+        
+        // Initialize empty working/selected dimensions based on schema
+        const emptyDimensions: Record<string, string[]> = {};
+        schemaData.levels.forEach((level) => {
+          emptyDimensions[level.key] = [];
+        });
+        setWorkingDimensions(emptyDimensions);
+        setSelectedDimensions(emptyDimensions);
       })
       .catch((error) => {
-        console.error("Error loading dimension filters:", error);
+        console.error("Error loading schema:", error);
       })
       .finally(() => {
-        if (active) setIsLoadingDimensions(false);
+        if (active) setSchemaLoading(false);
       });
-
     return () => {
       active = false;
     };
   }, []);
 
-  const remainingLev2Options = lev2Options.filter(
-    (option) => !selectedLev2Names.includes(option)
-  );
-  const remainingLev3Options = lev3Options.filter(
-    (option) => !selectedLev3Names.includes(option)
-  );
+  // Load root dimensions once schema is available
+  useEffect(() => {
+    if (!schema) return;
+    
+    let active = true;
+    const rootLevelKey = schema.levels[0]?.key;
+    if (!rootLevelKey) return;
 
-  // Load graph data from API
-  // Accepts filters as parameter to avoid stale closure issues
+    api.graph
+      .getDimensions()
+      .then((data) => {
+        if (!active) return;
+        const cleanRoot = (data[rootLevelKey] || [])
+          .map((opt: any) => (opt !== null && opt !== undefined ? String(opt) : ""))
+          .filter((opt: string) => opt.trim() !== "");
+        
+        setScopedDimensionOptions((prev) => ({
+          ...prev,
+          root: cleanRoot,
+        }));
+      })
+      .catch((error) => {
+        console.error("Error loading root dimensions:", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [schema]);
+
+  // Restore dimension filters when popover opens
+  useEffect(() => {
+    if (!isDimensionFilterOpen || !currentFilters || !schema) return;
+    
+    const restored: Record<string, string[]> = {};
+    schema.levels.forEach((level) => {
+      restored[level.key] = currentFilters.dimensionFilters?.[level.key] ?? [];
+    });
+    setWorkingDimensions(restored);
+  }, [isDimensionFilterOpen, currentFilters, schema]);
+
+  // متد لود گراف از API
   const loadGraph = useCallback(async (filtersToUse: FilterTypes) => {
     if (!filtersToUse) return;
-    
     setIsLoading(true);
-    
     try {
-      // Fetch data from backend
       const data = await api.graph.getData(filtersToUse);
-      
-      // Store in app state
       setProcessedData({
         graphData: data.graphData,
         variants: data.variants,
@@ -126,14 +146,7 @@ export default function Navbar({
         startActivities: data.startActivities,
         endActivities: data.endActivities,
       });
-      
-      // Process for graph visualization
-      processInitialData(
-        data.graphData, 
-        data.startActivities, 
-        data.endActivities
-      );
-      
+      processInitialData(data.graphData, data.startActivities, data.endActivities);
     } catch (error) {
       console.error("Error loading graph:", error);
     } finally {
@@ -141,87 +154,287 @@ export default function Navbar({
     }
   }, [setIsLoading, setProcessedData, processInitialData]);
 
-  // اعمال تغییرات
-  const handleApply = () => {
-    if (!dateRange.start || !dateRange.end) {
-        return;
+  // Get dimension badge label dynamically
+  const getDimensionBadgeLabel = () => {
+    if (!schema) return "در حال بارگذاری...";
+    
+    const rootOptions = scopedDimensionOptions.root || [];
+    const rootLevelKey = schema.levels[0]?.key;
+    const selectedRoot = rootLevelKey ? workingDimensions[rootLevelKey] || [] : [];
+
+    if (rootOptions.length > 0 && selectedRoot.length === rootOptions.length) {
+      return "همه موارد";
     }
 
-    // تبدیل تاریخ‌ها به رشته استاندارد
-    const startIso = dateRange.start.toString();
-    const endIso = dateRange.end.toString();
-
-    // ساخت آبجکت فیلتر جدید
-    const defaultOtherFilters = {
-        minCaseCount: null as number | null,
-        maxCaseCount: null as number | null,
-        meanTimeRange: { min: null, max: null } as { min: number | null, max: number | null },
-        weightFilter: "mean_time" as const,
-        timeUnitFilter: "d" as const,
-    };
-
-    const baseFilters = currentFilters || { 
-        ...defaultOtherFilters, 
-        dateRange: { start: startIso, end: endIso },
-        outlierPrecentage: 5 
-    };
-
-    const newFilters: FilterTypes = {
-      ...baseFilters,
-      dateRange: {
-        start: startIso,
-        end: endIso,
-      },
-      lev2Names: selectedLev2Names,
-      lev3Names: selectedLev3Names,
-    };
-
-    onFilterUpdate(newFilters);
-    setIsOpen(false);
-    
-    // Load graph with the NEW filters directly (avoid stale closure)
-    loadGraph(newFilters);
+    for (let i = schema.levels.length - 1; i >= 0; i--) {
+      const levelKey = schema.levels[i].key;
+      const currentLevelValues = workingDimensions[levelKey] || [];
+      if (currentLevelValues.length > 0) {
+        return `${currentLevelValues.length} مورد`;
+      }
+    }
+    return "بدون انتخاب";
   };
 
   // فرمت تاریخ برای نمایش خلاصه در دکمه
   const getDateLabel = () => {
     if (dateRange.start && dateRange.end) {
-      const start = moment(
-        new Date(
-          dateRange.start.year,
-          dateRange.start.month - 1,
-          dateRange.start.day
-        )
-      ).format("jYYYY/jMM/jDD");
-      const end = moment(
-        new Date(dateRange.end.year, dateRange.end.month - 1, dateRange.end.day)
-      ).format("jYYYY/jMM/jDD");
+      const start = moment(new Date(dateRange.start.year, dateRange.start.month - 1, dateRange.start.day)).format("jYYYY/jMM/jDD");
+      const end = moment(new Date(dateRange.end.year, dateRange.end.month - 1, dateRange.end.day)).format("jYYYY/jMM/jDD");
       return `${start} - ${end}`;
     }
     return "انتخاب بازه";
   };
 
+  // Handle checkbox toggle with cascade logic
+  const toggleSelectedNode = (
+    levelKey: string,
+    option: string,
+    levelIndex: number,
+    parentPath: string[]
+  ) => {
+    if (!schema) return;
+
+    const nodePath = [...parentPath, option];
+    const isChecking = !workingDimensions[levelKey]?.includes(option);
+
+    setWorkingDimensions((prev) => {
+      const updated = { ...prev };
+
+      const cascade = (idx: number, path: string[]) => {
+        if (!schema || idx >= schema.levels.length) return;
+        const lvlKey = schema.levels[idx].key;
+        const pathStr = path.join("|");
+        const childOptions = scopedDimensionOptions[pathStr] || [];
+
+        if (isChecking) {
+          updated[lvlKey] = Array.from(new Set([...(updated[lvlKey] || []), ...childOptions]));
+        } else {
+          updated[lvlKey] = (updated[lvlKey] || []).filter((opt) => !childOptions.includes(opt));
+        }
+
+        childOptions.forEach((childOpt) => {
+          cascade(idx + 1, [...path, childOpt]);
+        });
+      };
+
+      if (isChecking) {
+        updated[levelKey] = Array.from(new Set([...(prev[levelKey] || []), option]));
+        cascade(levelIndex + 1, nodePath);
+      } else {
+        updated[levelKey] = (prev[levelKey] || []).filter((item) => item !== option);
+        cascade(levelIndex + 1, nodePath);
+
+        for (let i = 0; i < levelIndex; i++) {
+          const parentLevelKey = schema.levels[i].key;
+          const parentValue = parentPath[i];
+          updated[parentLevelKey] = (updated[parentLevelKey] || []).filter((item) => item !== parentValue);
+        }
+      }
+
+      return updated;
+    });
+  };
+
+  // Expand/collapse node and lazy-load children
+  const toggleNodeExpand = async (
+    levelKey: string,
+    option: string,
+    levelIndex: number,
+    parentPath: string[]
+  ) => {
+    if (!schema) return;
+
+    const currentPath = [...parentPath, option];
+    const pathKey = currentPath.join("|");
+    const nodeKey = `${levelKey}_${pathKey}`;
+
+    setExpandedNodes((prev) => ({ ...prev, [nodeKey]: !prev[nodeKey] }));
+
+    if (!scopedDimensionOptions[pathKey]) {
+      const nextLevelIndex = levelIndex + 1;
+      if (nextLevelIndex < schema.levels.length) {
+        const nextLevelKey = schema.levels[nextLevelIndex].key;
+
+        const apiFilters: Record<string, string[]> = {};
+        for (let i = 0; i <= levelIndex; i++) {
+          const lvlKey = schema.levels[i].key;
+          apiFilters[lvlKey] = [currentPath[i]];
+        }
+
+        try {
+          const data = await api.graph.getDimensions(apiFilters);
+          
+          const fetchedOptions = (data[nextLevelKey] || [])
+            .map((opt: any) => (opt !== null && opt !== undefined ? String(opt) : ""))
+            .filter((opt: string) => opt.trim() !== "");
+
+          setScopedDimensionOptions((prev) => ({
+            ...prev,
+            [pathKey]: fetchedOptions,
+          }));
+
+          setWorkingDimensions((prevSel) => {
+            const isParentChecked = prevSel[levelKey]?.includes(option);
+            if (isParentChecked && fetchedOptions.length > 0) {
+              return {
+                ...prevSel,
+                [nextLevelKey]: Array.from(new Set([...(prevSel[nextLevelKey] || []), ...fetchedOptions])),
+              };
+            }
+            return prevSel;
+          });
+        } catch (error) {
+          console.error("Error fetching children for path:", pathKey, error);
+        }
+      }
+    }
+  };
+
+  // Apply filters
+  const handleApply = () => {
+    if (!dateRange.start || !dateRange.end || !schema) return;
+
+    const startIso = dateRange.start.toString();
+    const endIso = dateRange.end.toString();
+
+    const defaultOtherFilters = {
+      minCaseCount: null as number | null,
+      maxCaseCount: null as number | null,
+      meanTimeRange: { min: null, max: null } as { min: number | null; max: number | null },
+      weightFilter: "mean_time" as const,
+      timeUnitFilter: "d" as const,
+      unitId: null as number | null,
+    };
+
+    const baseFilters = currentFilters || {
+      ...defaultOtherFilters,
+      dateRange: { start: startIso, end: endIso },
+      dimensionFilters: {},
+      outlierPrecentage: 5,
+    };
+
+    const newFilters: FilterTypes = {
+      ...baseFilters,
+      dateRange: { start: startIso, end: endIso },
+      dimensionFilters: workingDimensions,
+    };
+
+    // Commit working changes
+    setSelectedDimensions(workingDimensions);
+
+    onFilterUpdate(newFilters);
+    setIsTimeFilterOpen(false);
+    setIsDimensionFilterOpen(false);
+    loadGraph(newFilters);
+  };
+
+  // Render dimension tree dynamically based on schema
+  const renderDimensionTree = (levelIndex: number, parentPath: string[] = []) => {
+    if (!schema || levelIndex >= schema.levels.length) return null;
+
+    const levelInfo = schema.levels[levelIndex];
+    const pathKey = parentPath.join("|") || "root";
+    const currentOptions = scopedDimensionOptions[pathKey] || [];
+    const currentSelected = workingDimensions[levelInfo.key] || [];
+
+    if (!currentOptions.length) {
+      if (levelIndex === 0) {
+        return <div className="text-slate-400 text-[11px] py-4 text-center">در حال بارگذاری سطوح اصلی...</div>;
+      }
+      return null;
+    }
+
+    return (
+      <div className="flex flex-col gap-1.5 w-full">
+        {currentOptions.map((option) => {
+          const currentPath = [...parentPath, option];
+          const childPathKey = currentPath.join("|");
+          const nodeKey = `${levelInfo.key}_${childPathKey}`;
+          
+          const isExpanded = expandedNodes[nodeKey] || false;
+          const isChecked = currentSelected.includes(option);
+          
+          const nextLevelIndex = levelIndex + 1;
+          const nextLevelInfo = nextLevelIndex < schema.levels.length ? schema.levels[nextLevelIndex] : null;
+          
+          const childOptions = scopedDimensionOptions[childPathKey];
+          const hasLoadedChildren = childOptions !== undefined;
+          const hasValidChildren = hasLoadedChildren && childOptions.length > 0;
+          
+          const nextSelected = nextLevelInfo ? workingDimensions[nextLevelInfo.key] || [] : [];
+          const isAnyChildSelected = hasValidChildren && childOptions.some(opt => nextSelected.includes(opt));
+          const isIndeterminate = !isChecked && isAnyChildSelected;
+
+          const showExpandButton = levelIndex < schema.levels.length - 1 && (!hasLoadedChildren || hasValidChildren);
+
+          return (
+            <div 
+              key={option} 
+              className={`flex flex-col w-full relative ${levelIndex > 0 ? "pr-3 mr-1.5 border-r border-slate-200/40 mt-1" : ""}`}
+            >
+              <div className="w-full flex items-center justify-between bg-white/40 backdrop-blur-md border border-white/60 rounded-xl p-2 transition-all duration-300 hover:bg-white/80 shadow-sm gap-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    isSelected={isChecked}
+                    isIndeterminate={isIndeterminate}
+                    radius="md"
+                    size="sm"
+                    color="primary"
+                    onValueChange={() => toggleSelectedNode(levelInfo.key, option, levelIndex, parentPath)}
+                    classNames={{ wrapper: "before:border-slate-300 mr-1" }}
+                  />
+                  <span className="text-xs font-semibold text-slate-700 select-none truncate max-w-[220px]">
+                    {option}
+                  </span>
+                </div>
+
+                {showExpandButton && (
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="light"
+                    className="w-7 h-7 min-w-7 rounded-lg text-slate-500 hover:bg-blue-50/80 hover:text-blue-600 transition-colors"
+                    onPress={() => toggleNodeExpand(levelInfo.key, option, levelIndex, parentPath)}
+                  >
+                    {isExpanded ? <Minus size={12} strokeWidth={2.5} /> : <Plus size={12} strokeWidth={2.5} />}
+                  </Button>
+                )}
+              </div>
+
+              {isExpanded && hasValidChildren && (
+                <div className="mt-1.5 w-full">
+                  {renderDimensionTree(levelIndex + 1, currentPath)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="w-full h-16 bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/60 shadow-sm px-4 flex gap-x-4 items-center z-30 relative transition-all duration-300">
-      {/* --- Left Side: Title --- */}
       <div className="flex items-center gap-3 border-l pl-3 border-slate-300">
         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
           <SlidersHorizontal size={20} />
         </div>
-        
       </div>
 
-      {/* --- Middle: Dropdown Filter Trigger --- */}
-      <div className="flex">
+      <div className="flex items-center gap-2">
+        {/* پاپ‌اور فیلتر زمان */}
         <Popover
-          isOpen={isOpen}
-          onOpenChange={setIsOpen}
+          isOpen={isTimeFilterOpen}
+          onOpenChange={(open) => {
+            setIsTimeFilterOpen(open);
+            if (open) setIsDimensionFilterOpen(false);
+          }}
           placement="bottom"
           offset={10}
           showArrow
           backdrop="transparent"
           shouldCloseOnInteractOutside={(el) => {
-            // اگر المنت کلیک‌شده داخل یک popover یا overlay دیگر باشد، بسته نشود
             const isInsideNestedPopover = el.closest(
               "[data-slot='content'][data-open]," +
               "[role='dialog']," +
@@ -235,27 +448,15 @@ export default function Navbar({
           <PopoverTrigger>
             <Button
               variant="flat"
-              className="h-10 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl px-4 min-w-[280px] justify-between group hover:bg-white hover:border-blue-300 hover:shadow-md transition-all duration-300"
+              className="h-10 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl px-4 min-w-[220px] justify-between group hover:bg-white hover:border-blue-300 hover:shadow-md transition-all duration-300"
             >
               <div className="flex items-center gap-2">
-                <Filter
-                  size={16}
-                  className="text-slate-400 group-hover:text-blue-500 transition-colors"
-                />
-                <span className="text-xs font-bold text-slate-700">
-                  فیلترهای سراسری
-                </span>
+                <Filter size={16} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                <span className="text-xs font-bold text-slate-700">فیلترهای زمان</span>
               </div>
-
-              {/* نمایش خلاصه وضعیت فیلترها روی دکمه */}
               <div dir="ltr" className="flex items-center gap-1.5">
-                {/* چیپ تاریخ */}
                 {dateRange.start && (
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    className="h-5 bg-blue-100 text-blue-700 border border-blue-200 text-[10px] px-1"
-                  >
+                  <Chip size="sm" variant="flat" className="h-5 bg-blue-100 text-blue-700 border border-blue-200 text-[10px] px-1">
                     {getDateLabel()}
                   </Chip>
                 )}
@@ -265,19 +466,13 @@ export default function Navbar({
 
           <PopoverContent className="text-right w-[320px] p-0 border border-slate-100 shadow-2xl rounded-2xl max-h-[80vh] overflow-y-auto">
             <div dir="ltr" className="flex flex-col min-h-0">
-              {/* Header */}
               <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                 <div className="p-1.5 bg-white border border-slate-200 rounded-lg shadow-sm">
                   <ListFilter size={14} className="text-slate-400" />
                 </div>
-                <span className="text-xs font-bold text-slate-700">
-                  تنظیمات سراسری
-                </span>
+                <span className="text-xs font-bold text-slate-700">فیلترهای زمان</span>
               </div>
-
-              {/* Body */}
               <div className="p-4 flex flex-col gap-5 bg-white overflow-y-auto min-h-0 max-h-[calc(80vh-120px)]">
-                {/* 1. Date Range Section */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2 text-slate-500 mb-1">
                     <CalendarRange size={14} className="text-blue-500" />
@@ -289,139 +484,118 @@ export default function Navbar({
                     placeholder={{ start: "شروع...", end: "پایان..." }}
                   />
                 </div>
-
-                <div className="flex flex-col gap-4 pt-2 border-t border-slate-100">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 text-slate-500 mb-1">
-                      <span className="text-[11px] font-bold">فیلتر سطح 2</span>
-                    </div>
-
-                    {selectedLev2Names.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {selectedLev2Names.map((item) => (
-                          <button
-                            key={item}
-                            type="button"
-                            onClick={() =>
-                              setSelectedLev2Names((prev) => prev.filter((value) => value !== item))
-                            }
-                            className="inline-flex items-center gap-2 rounded-full bg-blue-100 text-blue-800 text-[11px] px-2 py-1 transition hover:bg-blue-200"
-                          >
-                            <span>{item}</span>
-                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-200 text-blue-700">
-                              ×
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <Select
-                      label="فیلتر سطح 2"
-                      placeholder="انتخاب کنید"
-                      size="sm"
-                      selectionMode="multiple"
-                      selectedKeys={new Set(selectedLev2Names)}
-                      renderValue={(items) =>
-                        items.length ? <span>{items.length} انتخاب شده</span> : <span className="text-slate-400">انتخاب کنید</span>
-                      }
-                      classNames={{
-                        trigger: "bg-white/80 border-slate-200 hover:border-blue-300 focus:border-blue-500 rounded-xl shadow-sm",
-                        value: "text-slate-700 text-xs",
-                      }}
-                      onSelectionChange={(keys) =>
-                        setSelectedLev2Names(Array.from(keys).map(String))
-                      }
-                      disabled={isLoadingDimensions || lev2Options.length === 0 || remainingLev2Options.length === 0}
-                    >
-                      {remainingLev2Options.map((option) => (
-                        <SelectItem key={option} textValue={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </Select>
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 text-slate-500 mb-1">
-                      <span className="text-[11px] font-bold">فیلتر سطح 3</span>
-                    </div>
-
-                    {selectedLev3Names.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {selectedLev3Names.map((item) => (
-                          <button
-                            key={item}
-                            type="button"
-                            onClick={() =>
-                              setSelectedLev3Names((prev) => prev.filter((value) => value !== item))
-                            }
-                            className="inline-flex items-center gap-2 rounded-full bg-blue-100 text-blue-800 text-[11px] px-2 py-1 transition hover:bg-blue-200"
-                          >
-                            <span>{item}</span>
-                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-blue-200 text-blue-700">
-                              ×
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <Select
-                      label="فیلتر سطح 3"
-                      placeholder="انتخاب کنید"
-                      size="sm"
-                      selectionMode="multiple"
-                      selectedKeys={new Set(selectedLev3Names)}
-                      renderValue={(items) =>
-                        items.length ? <span>{items.length} انتخاب شده</span> : <span className="text-slate-400">انتخاب کنید</span>
-                      }
-                      classNames={{
-                        trigger: "bg-white/80 border-slate-200 hover:border-blue-300 focus:border-blue-500 rounded-xl shadow-sm",
-                        value: "text-slate-700 text-xs",
-                      }}
-                      onSelectionChange={(keys) =>
-                        setSelectedLev3Names(Array.from(keys).map(String))
-                      }
-                      disabled={isLoadingDimensions || lev3Options.length === 0 || remainingLev3Options.length === 0}
-                    >
-                      {remainingLev3Options.map((option) => (
-                        <SelectItem key={option} textValue={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </Select>
-                  </div>
-                </div>
-
               </div>
-
-              {/* Footer Actions */}
               <div className="p-3 border-t border-slate-100 bg-slate-50 flex gap-2 justify-end">
-                <Button
-                  size="sm"
-                  variant="light"
-                  color="danger"
-                  onPress={() => setIsOpen(false)}
-                  className="text-xs font-medium h-8"
-                >
+                <Button size="sm" variant="light" color="danger" onPress={() => setIsTimeFilterOpen(false)} className="text-xs font-medium h-8">
                   انصراف
-                </Button>
-                <Button
-                  size="sm"
-                  color="primary"
-                  onPress={handleApply}
-                  isLoading={isLoading}
-                  isDisabled={!dateRange.start || !dateRange.end}
-                  className="text-xs font-bold bg-blue-600 text-white shadow-md shadow-blue-500/20 h-8 px-4 rounded-lg"
-                  startContent={!isLoading ? <Check size={14} /> : undefined}
-                >
-                  اعمال فیلترها
                 </Button>
               </div>
             </div>
           </PopoverContent>
         </Popover>
+
+        {/* پاپ‌اور فیلتر ابعاد */}
+        <Popover
+          isOpen={isDimensionFilterOpen}
+          onOpenChange={(open) => {
+            setIsDimensionFilterOpen(open);
+            if (open) setIsTimeFilterOpen(false);
+          }}
+          placement="bottom"
+          offset={10}
+          showArrow
+          backdrop="transparent"
+          shouldCloseOnInteractOutside={(el) => {
+            const isInsideNestedPopover = el.closest(
+              "[data-slot='content'][data-open]," +
+              "[role='dialog']," +
+              "[role='listbox']," +
+              ".heroui-popover-content," +
+              "[data-dismissable-layer]"
+            );
+            return !isInsideNestedPopover;
+          }}
+        >
+          <PopoverTrigger>
+            <Button
+              variant="flat"
+              className="h-10 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl px-4 min-w-[220px] justify-between group hover:bg-white hover:border-blue-300 hover:shadow-md transition-all duration-300"
+            >
+              <div className="flex items-center gap-2">
+                <Filter size={16} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                <span className="text-xs font-bold text-slate-700">فیلتر ابعاد</span>
+              </div>
+              <div dir="ltr" className="flex items-center gap-1.5">
+                <Chip size="sm" variant="flat" className="h-5 bg-slate-100 text-slate-600 border border-slate-200 text-[10px] px-1 font-bold">
+                  {getDimensionBadgeLabel()}
+                </Chip>
+              </div>
+            </Button>
+          </PopoverTrigger>
+
+          <PopoverContent className="text-right w-[360px] p-0 border border-white/40 bg-white/70 backdrop-blur-xl shadow-2xl rounded-2xl max-h-[80vh] overflow-y-auto">
+            <div dir="rtl" className="flex flex-col min-h-0 w-full">
+              <div className="px-4 py-3 border-b border-slate-200/50 bg-white/40 flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-700">ساختار درختی ابعاد</span>
+                <div className="p-1.5 bg-white/80 border border-slate-200/60 rounded-lg shadow-sm">
+                  <ListFilter size={14} className="text-slate-500" />
+                </div>
+              </div>
+
+              <div className="p-4 space-y-3 overflow-y-auto min-h-0 max-h-[calc(80vh-120px)]">
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/40">
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <Filter size={14} className="text-blue-500" />
+                    <span className="text-[11px] font-bold">انتخاب بر اساس سطوح دیتای واقعی</span>
+                  </div>
+                  <Chip size="sm" variant="flat" className="h-5 bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold px-1">
+                    {getDimensionBadgeLabel()}
+                  </Chip>
+                </div>
+
+                <div className="space-y-2">
+                  {renderDimensionTree(0)}
+                </div>
+              </div>
+
+              <div className="p-3 border-t border-slate-200/50 bg-white/40 flex gap-2 justify-between">
+                <Button 
+                  size="sm" 
+                  variant="light" 
+                  color="danger" 
+                  onPress={() => {
+                    if (schema) {
+                      const cleared: Record<string, string[]> = {};
+                      schema.levels.forEach(level => {
+                        cleared[level.key] = [];
+                      });
+                      setWorkingDimensions(cleared);
+                      setExpandedNodes({});
+                    }
+                  }}
+                  className="text-xs font-medium h-8"
+                >
+                  پاک کردن
+                </Button>
+                <Button size="sm" variant="light" color="danger" onPress={() => setIsDimensionFilterOpen(false)} className="text-xs font-medium h-8">
+                  انصراف
+                </Button>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      
+        <Button
+          size="sm"
+          color="primary"
+          onPress={handleApply}
+          isLoading={isLoading}
+          isDisabled={!dateRange.start || !dateRange.end || schemaLoading}
+          className="text-xs font-bold bg-blue-600 text-white shadow-md shadow-blue-500/20 h-10 px-4 rounded-xl"
+          startContent={!isLoading ? <Check size={14} /> : undefined}
+        >
+          اعمال فیلترها
+        </Button>
       </div>
     </div>
   );

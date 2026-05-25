@@ -191,7 +191,7 @@ export async function fetcher<TResponse, TBody = unknown>(
 
 export const get = <T>(
   endpoint: string,
-  params?: Record<string, string | number | boolean | null | undefined>
+  params?: Record<string, string | number | boolean | null | undefined | Array<string | number | boolean>>
 ) => fetcher<T>(endpoint, { method: "GET", params });
 
 export const post = <T, B = unknown>(endpoint: string, body?: B) =>
