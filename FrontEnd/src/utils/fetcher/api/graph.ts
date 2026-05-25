@@ -1,8 +1,4 @@
-/**
- * Graph API — fetches and parses the main process-mining graph data.
- * 
- * Now supports dynamic dimension levels via schema detection.
- */
+// فایل FrontEnd/src/utils/fetcher/api/graph.ts را با این محتوا کاملاً به‌روزرسانی کن:
 
 import type { FilterTypes, ProcessMiningData, DimensionSchema } from "../../../types/types";
 import { ApiError, buildUrl, get } from "../core";
@@ -10,21 +6,16 @@ import { parseGraphResponse } from "../parsers";
 import { showToast } from "@/components/Toast";
 
 type DimensionOptions = Record<string, string[]>;
-
 type DimensionQueryParams = Record<string, string[]>;
 
 export const graphApi = {
-  /**
-   * Fetch database schema - returns available dimension levels dynamically
-   */
+  /** Fetch database schema - returns available dimension levels dynamically */
   getSchema: async (): Promise<DimensionSchema> => {
     try {
       const response = await get<DimensionSchema>("/api/graph/schema");
-      console.log("✅ [SCHEMA] Retrieved schema:", response.data);
       return response.data;
     } catch (error) {
       console.error("❌ [SCHEMA] Error fetching schema:", error);
-      // Fallback to 8 levels if schema endpoint fails
       return {
         totalLevels: 8,
         levels: Array.from({ length: 8 }, (_, i) => ({
@@ -37,13 +28,7 @@ export const graphApi = {
     }
   },
 
-  /**
-   * Fetch graph data with filters.
-   *
-   * The backend returns a zstd-compressed MsgPack container holding Arrow IPC tables.
-   * This function handles the full pipeline:
-   *   build params → POST → decompress → decode → parse Arrow → return domain objects
-   */
+  /** Fetch graph data with filters */
   getData: async (filters: Partial<FilterTypes>): Promise<ProcessMiningData> => {
     try {
       const params = buildQueryParams(filters);
@@ -68,36 +53,35 @@ export const graphApi = {
       showToast({
         type: "error",
         title: "خطا در بارگذاری گراف",
-        message:
-          error instanceof ApiError
-            ? `خطای سرور: ${error.status} — ${error.statusText}`
-            : "دریافت داده‌های گراف با خطا مواجه شد. لطفاً دوباره تلاش کنید.",
+        message: error instanceof ApiError ? `خطای سرور: ${error.status}` : "خطا در دریافت داده‌های گراف.",
       });
       throw error;
     }
   },
 
-  /**
-   * Fetch available dimensions based on current filters (supports dynamic levels)
-   */
+  /** Fetch available dimensions based on current filters */
   getDimensions: async (filters?: DimensionQueryParams): Promise<DimensionOptions> => {
     const response = await get<DimensionOptions>("/api/graph/filters", filters || {});
     return response.data;
   },
+
+  /** 🟢 دریافت لیست تمام صلاحیت‌های شعبه موجود در دیتابیس */
+  getCourtKinds: async (): Promise<string[]> => {
+    try {
+      const response = await get<string[]>("/api/graph/court-kinds");
+      return response.data;
+    } catch (error) {
+      console.error("❌ Error fetching court kinds:", error);
+      return [];
+    }
+  },
 };
 
-// ============================================================================
-// HELPERS
-// ============================================================================
-
-/** Convert `FilterTypes` into the query-param shape expected by the backend. */
-function buildQueryParams(
-  filters: Partial<FilterTypes>
-): Record<string, string | number | boolean | null | undefined | Array<string>> {
+function buildQueryParams(filters: Partial<FilterTypes>): Record<string, any> {
   const outlierPct = filters.outlierPrecentage ?? 5;
   const targetCoverage = 1 - outlierPct / 100;
 
-  const params: Record<string, string | number | boolean | null | undefined | Array<string>> = {
+  const params: Record<string, any> = {
     start_date:      filters.dateRange?.start,
     end_date:        filters.dateRange?.end,
     unit_id:         filters.unitId,
@@ -110,13 +94,15 @@ function buildQueryParams(
     target_coverage: targetCoverage,
   };
 
-  // Add dimension filters dynamically
   if (filters.dimensionFilters) {
     Object.entries(filters.dimensionFilters).forEach(([key, values]) => {
-      if (values && values.length > 0) {
-        params[key] = values;
-      }
+      if (values && values.length > 0) params[key] = values;
     });
+  }
+
+  // 🟢 افزودن داینامیک صلاحیت‌های انتخاب شده به کوئری بادی پارامترها
+  if (filters.courtKinds && filters.courtKinds.length > 0) {
+    params["court_kinds"] = filters.courtKinds;
   }
 
   return params;

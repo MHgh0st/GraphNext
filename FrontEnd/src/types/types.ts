@@ -72,6 +72,8 @@ export interface FilterTypes {
   dateRange: { start: string; end: string };
   /** Dynamic dimension filters - key is like "lev1_names", value is selected values */
   dimensionFilters: Record<string, string[]>;
+  /** Selected court kinds (صلاحیت شعبه) */
+  courtKinds: string[];
   /** Minimum number of cases for an edge to be included */
   minCaseCount: number | null;
   /** Maximum number of cases for an edge to be included */
@@ -200,6 +202,10 @@ export interface GraphData {
   Edge_Label: string;
   /** Number of cases traversing this edge */
   Case_Count: number;
+  Source_PublicCourtType?: string;
+  Source_CourtType?: string;
+  Target_PublicCourtType?: string;
+  Target_CourtType?: string;
 }
 
 /**
