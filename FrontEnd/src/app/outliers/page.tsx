@@ -16,14 +16,13 @@ import { TrendingDown, Activity, BarChart3 } from "lucide-react";
 
 import type { Path, ExtendedPath } from "@/types/types";
 import { PathList } from "@/components/sideBarCards/PathList";
-import { useAppStore } from "@/hooks/useAppStore";
+import { useAppStore, useGraphData } from "@/hooks/useAppStore";
 import { useGraphStore } from "@/store/useGraphStore";
 
 export default function OutliersPage() {
   // --- Global Stores ---
   const {
     outliers,
-    graphData,
     startEndNodes,
     selectedColorPalette,
     selectedNodeIds,
@@ -34,6 +33,9 @@ export default function OutliersPage() {
     setSelectedPathEdges,
     setSelectedPathIndex,
   } = useAppStore();
+  
+  // 🔧 استفاده از useGraphData hook که filteredGraphData ?? graphData را برمی‌گرداند
+  const graphData = useGraphData();
 
   const graphStore = useGraphStore();
   const allNodes = graphStore.layoutedNodes;

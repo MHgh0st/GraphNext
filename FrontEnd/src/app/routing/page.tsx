@@ -29,7 +29,7 @@ import {
 
 import type { Path, Variant, ExtendedPath } from "@/types/types";
 import { PathList } from "@/components/sideBarCards/PathList";
-import { useAppStore } from "@/hooks/useAppStore";
+import { useAppStore, useGraphData } from "@/hooks/useAppStore";
 import { useGraphStore } from "@/store/useGraphStore";
 
 // ============================================================================
@@ -45,10 +45,13 @@ export default function PathfindingPage() {
     setSelectedPathNodes,
     setSelectedPathEdges,
     setSelectedPathIndex: setAppSelectedPathIndex,
-    graphData,
     startEndNodes,
     selectedColorPalette,
   } = useAppStore();
+  
+  // 🔧 استفاده از useGraphData hook که filteredGraphData ?? graphData را برمی‌گرداند
+  const graphData = useGraphData();
+  
   const { 
     allNodes, 
     pathStartNodeId, 

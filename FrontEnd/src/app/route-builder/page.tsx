@@ -36,7 +36,7 @@ import {
 
 import type { Variant, ExtendedPath, Path } from "@/types/types";
 import { PathList } from "@/components/sideBarCards/PathList";
-import { useAppStore } from "@/hooks/useAppStore";
+import { useAppStore, useGraphData } from "@/hooks/useAppStore";
 import { useGraphStore } from "@/store/useGraphStore";
 import { useRouteBuilderStore } from "@/store/useRouteBuilderStore";
 
@@ -168,11 +168,14 @@ export default function RouteBuilderPage() {
 
   // ── App + graph stores ────────────────────────────────────────────────────
   const {
-    variants, outliers, isLoading: appLoading, graphData,
+    variants, outliers, isLoading: appLoading,
     selectedNodeIds, startEndNodes, selectedColorPalette,
     setSelectedPathNodes, setSelectedPathEdges,
     setSelectedPathIndex: setAppSelectedPathIndex,
   } = useAppStore();
+  
+  // 🔧 استفاده از useGraphData hook که filteredGraphData ?? graphData را برمی‌گرداند
+  const graphData = useGraphData();
 
   const { allNodes, setFoundPaths, setActivePath, computeLayout } = useGraphStore();
 
