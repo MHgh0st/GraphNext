@@ -208,32 +208,33 @@ function Graph({
   const nodesForRender = useMemo(() => {
     const isHighlightingPath = selectedPathNodes.size > 0;
     
+    // اصلاح منطق فیلتر: گره‌هایی رندر می‌شوند که تیک دارند یا گره شروع و پایان سیستمی هستند
     const sourceNodes =
       filteredNodeIds && filteredNodeIds.size > 0
-        ? layoutedNodes.filter((node) => 
-            filteredNodeIds.has(node.id) || 
-            (node.data as CustomNodeData)?.isGhost ||
-            selectedPathNodes.has(node.id)
-          )
+        ? layoutedNodes.filter((node) => {
+            const nodeType = (node.data?.type as string) || node.type || "";
+            // 🟢 اگر گره در لیست تیک‌خورده‌ها بود، یا نوع آن start یا end بود، مجاز به رندر است
+            return (
+              filteredNodeIds.has(node.id) || 
+              nodeType === "start" || 
+              nodeType === "end" ||
+              node.id.toLowerCase().includes("start") ||
+              node.id.toLowerCase().includes("end")
+            );
+          })
         : layoutedNodes;
 
     return sourceNodes.map((node) => {
       const isGhost = (node.data as CustomNodeData)?.isGhost;
       const isPathHighlighted = selectedPathNodes.has(node.id);
       const isNodeSelected = node.id === selectedNodeId;
-
-      // If highlightPath() has explicitly managed this node's style, trust it
-      // (detected by the _highlightActive sentinel — a boolean flag, NOT opacity,
-      //  because opacity may be undefined for nodes with no prior opacity set)
       const isHighlightManaged = (node.data as any)?._highlightActive === true;
+
       if (isHighlightManaged) {
         return {
           ...node,
           type: (node.data?.type as string) || "activity",
-          data: {
-            ...node.data,
-            label: node.data?.label || node.id,
-          },
+          data: { ...node.data, label: node.data?.label || node.id },
         };
       }
 
@@ -247,7 +248,6 @@ function Graph({
         }
       } else if (isHighlightingPath) {
         if (!isPathHighlighted && !isGhost) {
-            // Stronger dimming so non-path nodes clearly fade into background
             opacity = 0.1;
             filter = "grayscale(1)";
         }
@@ -256,10 +256,7 @@ function Graph({
       return {
         ...node,
         type: (node.data?.type as string) || "activity",
-        data: {
-          ...node.data,
-          label: node.data?.label || node.id,
-        },
+        data: { ...node.data, label: node.data?.label || node.id },
         style: {
           ...node.style,
           opacity,
