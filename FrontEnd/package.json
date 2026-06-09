@@ -18,6 +18,7 @@
     "@heroui/divider": "^2.2.20",
     "@heroui/form": "^2.1.27",
     "@heroui/input": "^2.4.28",
+    "@heroui/input-otp": "^2.1.32",
     "@heroui/number-input": "^2.0.18",
     "@heroui/popover": "^2.3.27",
     "@heroui/select": "^2.4.28",

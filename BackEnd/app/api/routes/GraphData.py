@@ -140,7 +140,7 @@ async def get_graph_filters(request: Request):
 async def get_graph_data(
     request: Request,
     start_date: str = Query(None), end_date: str = Query(None), unit_id: int = Query(None),
-    weight_metric: str = Query("cases"), time_unit: str = Query("d"),
+    weight_metric: str = Query("mean_time"), time_unit: str = Query("d"),
     min_cases: int = Query(None), max_cases: int = Query(None),
     min_mean_time: int = Query(None), max_mean_time: int = Query(None),
     target_coverage: float = Query(0.95),

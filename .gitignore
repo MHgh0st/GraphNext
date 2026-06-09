@@ -1,25 +1,32 @@
 .DS_Store
 .env
+.idea/
 
 # --- Docker & Database ---
 postgres_data/
-# init.sql  # (اگر دیتای دیتابیس فقط تستی است، این را هم نگذارید بهتر است)
 
-# --- Python / Backend ---
-backend/__pycache__/
-backend/*.pyc
-backend/.venv
-backend/venv
-backend/.pytest_cache
+# --- Python / Backend (Case-Corrected) ---
+BackEnd/__pycache__/
+BackEnd/app/__pycache__/
+BackEnd/app/api/__pycache__/
+BackEnd/app/api/routes/__pycache__/
+BackEnd/app/services/__pycache__/
+BackEnd/*.pyc
+BackEnd/.venv
+BackEnd/venv
+BackEnd/.pytest_cache
 
-backend/dataset.parquet
+# Large datasets
+BackEnd/dataset.parquet
+BackEnd/*.csv
 
-# --- Node / Frontend ---
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/build/
-frontend/.bun/
+# --- Node / Frontend (Case-Corrected) ---
+FrontEnd/node_modules/
+FrontEnd/.next/
+FrontEnd/out/
+FrontEnd/build/
+FrontEnd/.bun/
 
-
-data
+# Archive files & Binaries
+*.tar.gz
+*.tar.xz
