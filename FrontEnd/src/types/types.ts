@@ -173,7 +173,8 @@ export type SidebarTab =
   | "RouteBuilder" // Step-by-step route building
   | "Settings"    // Graph settings
   | "Outliers"    // Outlier analysis
-  | "SearchCaseIds"; // Case ID search
+  | "SearchCaseIds" // Case ID search
+  | "Guide";      // User guide / docs
 
 // ============================================================================
 // GRAPH DATA TYPES

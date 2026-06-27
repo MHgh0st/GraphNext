@@ -13,9 +13,17 @@ import {
   EdgeMouseHandler,
   NodeMouseHandler,
   NodeTypes,
+  Panel,
+  getNodesBounds,
+  getViewportForBounds,
+  useReactFlow,
+  ReactFlowProvider,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Card } from "@heroui/card";
+import { Button } from "@heroui/button";
+import { Camera } from "lucide-react";
+import { toPng } from "html-to-image";
 
 import { StyledSmoothStepEdge } from "./graph/ui/StyledSmoothStepEdge";
 import { NodeTooltip } from "./graph/ui/NodeTooltip";
@@ -85,11 +93,13 @@ const EDGE_LABEL_ZOOM_THRESHOLD = 0.6;
 // COMPONENT
 // ============================================================================
 
-function Graph({
+function InnerGraph({
   className = "",
 }: GraphProps): React.ReactElement {
   const [zoomLevel, setZoomLevel] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { getNodes } = useReactFlow();
+  const [isExporting, setIsExporting] = useState(false);
 
   // Get state from useGraphStore
   const {
@@ -437,6 +447,90 @@ function Graph({
     return null;
   }, [activeTooltipEdgeId, activeSideBar, edgesForRender]);
 
+  const handleExport = useCallback(() => {
+    // ۱. استیت لودینگ را فعال می‌کنیم
+    setIsExporting(true);
+
+    // ۲. با setTimeout پردازش را به انتهای صف Event Loop می‌فرستیم
+    // این کار به مرورگر فرصت می‌دهد که بچرخد و دکمه لودینگ را به کاربر نشان دهد
+    setTimeout(async () => {
+      try {
+        const currentNodes = getNodes();
+        const visibleNodeIds = new Set(nodesForRender.map(n => n.id));
+        const visibleNodes = currentNodes.filter(n => visibleNodeIds.has(n.id));
+
+        if (visibleNodes.length === 0) {
+          setIsExporting(false);
+          return;
+        }
+
+        const nodesBounds = getNodesBounds(visibleNodes);
+        const padding = 50;
+        const imageWidth = nodesBounds.width + padding * 2;
+        const imageHeight = nodesBounds.height + padding * 2;
+
+        const viewport = getViewportForBounds(
+            nodesBounds,
+            imageWidth,
+            imageHeight,
+            1,
+            1,
+            padding
+        );
+
+        const viewportElement = document.querySelector(".react-flow__viewport");
+        if (!viewportElement) {
+          throw new Error("Viewport element not found");
+        }
+
+        // ۳. بهینه‌سازی رم: اگر گراف غول‌پیکر است، کیفیت اضافی را فدا می‌کنیم تا مرورگر کرش نکند
+        const isHugeGraph = imageWidth > 4000 || imageHeight > 4000;
+        const dynamicPixelRatio = isHugeGraph ? 1 : 2;
+
+        const dataUrl = await toPng(viewportElement, {
+          backgroundColor: "#ffffff",
+          width: imageWidth,
+          height: imageHeight,
+          pixelRatio: dynamicPixelRatio,
+          style: {
+            width: `${imageWidth}px`,
+            height: `${imageHeight}px`,
+            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+          },
+          // ۴. بهینه‌سازی سرعت: المان‌های اضافی را برای خروجی عکس پردازش نکن!
+          filter: (node) => {
+            // اگر گره یک المان HTML معتبر است
+            if (node instanceof HTMLElement) {
+              const classList = node.classList;
+              // نادیده گرفتن پنل‌ها، کنترل‌ها، مینی‌مپ و تولتیپ‌های شناور
+              if (
+                  classList.contains('react-flow__controls') ||
+                  classList.contains('react-flow__panel') ||
+                  classList.contains('react-flow__minimap') ||
+                  // اگر کلاس خاصی برای کاردهای تولتیپ خود دارید اینجا اضافه کنید
+                  classList.contains('shadow-xl') // کلاس مربوط به Card های تولتیپ شما
+              ) {
+                return false;
+              }
+            }
+            return true;
+          }
+        });
+
+        const link = document.createElement("a");
+        link.download = `process-graph-${new Date().toISOString().slice(0, 10)}.png`;
+        link.href = dataUrl;
+        link.click();
+      } catch (error) {
+        console.error("Failed to export image:", error);
+        alert("خطا در خروجی گرفتن از تصویر گراف. ممکن است گراف بیش از حد بزرگ باشد.");
+      } finally {
+        // پایان لودینگ
+        setIsExporting(false);
+      }
+    }, 100); // 100 میلی‌ثانیه زمان طلایی برای نفس کشیدن مرورگر
+  }, [nodesForRender, getNodes]);
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-full">
@@ -504,9 +598,31 @@ function Graph({
         >
           <Background gap={20} size={1} />
           <Controls />
+          <Panel position="bottom-left" className="m-4">
+            <Button
+              isIconOnly
+              color="primary"
+              variant="flat"
+              size="md"
+              className="bg-white/80 border border-slate-200 shadow-md backdrop-blur-md hover:bg-slate-50 rounded-xl"
+              onPress={handleExport}
+              isLoading={isExporting}
+              title="خروجی تصویر گراف"
+            >
+              <Camera size={18} className="text-blue-600" />
+            </Button>
+          </Panel>
         </ReactFlow>
       </div>
     </div>
+  );
+}
+
+function Graph(props: GraphProps) {
+  return (
+    <ReactFlowProvider>
+      <InnerGraph {...props} />
+    </ReactFlowProvider>
   );
 }
 

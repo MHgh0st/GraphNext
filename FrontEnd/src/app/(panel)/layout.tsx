@@ -13,6 +13,7 @@ import {
     FolderSearch,
     Monitor,
     GitFork,
+    HelpCircle,
 } from "lucide-react";
 import Graph from "@/components/Graph";
 import SankeyFlow from "@/components/SankeyFlow";
@@ -34,6 +35,7 @@ const TAB_TITLES: Record<SidebarTab, string> = {
     Settings: "تنظیمات نمودار",
     Outliers: "تحلیل مسیر های کم تکرار",
     SearchCaseIds: "پرونده نگار",
+    Guide: "راهنمای سامانه",
 };
 
 
@@ -44,6 +46,7 @@ const TAB_ICONS: Record<SidebarTab, React.ReactNode> = {
     Settings: <Settings className={TAB_THEMES.Settings.iconActiveClass} />,
     Outliers: <RouteOff className={TAB_THEMES.Outliers.iconActiveClass} />,
     SearchCaseIds: <FolderSearch className={TAB_THEMES.SearchCaseIds.iconActiveClass} />,
+    Guide: <HelpCircle className={TAB_THEMES.Guide.iconActiveClass} />,
 };
 
 
@@ -54,6 +57,7 @@ const TAB_ICON_COLORS: Record<SidebarTab, string> = {
     Settings: TAB_THEMES.Settings.activeClass,
     Outliers: TAB_THEMES.Outliers.activeClass,
     SearchCaseIds: TAB_THEMES.SearchCaseIds.activeClass,
+    Guide: TAB_THEMES.Guide.activeClass,
 };
 
 const TAB_TITLE_COLORS: Record<SidebarTab, string> = {
@@ -63,6 +67,7 @@ const TAB_TITLE_COLORS: Record<SidebarTab, string> = {
     Settings: TAB_THEMES.Settings.iconActiveClass,
     Outliers: TAB_THEMES.Outliers.iconActiveClass,
     SearchCaseIds: TAB_THEMES.SearchCaseIds.iconActiveClass,
+    Guide: TAB_THEMES.Guide.iconActiveClass,
 };
 
 

@@ -1,13 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Input } from "@heroui/input";
 import { InputOtp } from "@heroui/input-otp";
 import { Button } from "@heroui/button";
 import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Phone, ArrowRight, ShieldCheck } from "lucide-react";
+import { Phone, ArrowRight, Monitor, Server, Database } from "lucide-react";
 import { useRouter } from 'next/navigation';
+import LogoType from '../../../assets/images/type.svg';
+import LogoSign from '../../../assets/images/sign.svg';
+
 
 export default function LoginPage() {
     const [step, setStep] = useState<1 | 2>(1);
@@ -16,6 +19,53 @@ export default function LoginPage() {
     const [otp, setOtp] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
+
+    const [health, setHealth] = useState<{
+        frontend: 'loading' | 'healthy' | 'unhealthy';
+        backend: 'loading' | 'healthy' | 'unhealthy';
+        database: 'loading' | 'healthy' | 'unhealthy';
+    }>({
+        frontend: 'healthy',
+        backend: 'loading',
+        database: 'loading',
+    });
+
+    useEffect(() => {
+        const checkHealth = async () => {
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 4000);
+                
+                const res = await fetch(`${apiUrl}/health`, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    setHealth({
+                        frontend: 'healthy',
+                        backend: data.backend === 'healthy' ? 'healthy' : 'unhealthy',
+                        database: data.database === 'healthy' ? 'healthy' : 'unhealthy',
+                    });
+                } else {
+                    setHealth({
+                        frontend: 'healthy',
+                        backend: 'unhealthy',
+                        database: 'unhealthy',
+                    });
+                }
+            } catch (err) {
+                console.error("Health check failed:", err);
+                setHealth({
+                    frontend: 'healthy',
+                    backend: 'unhealthy',
+                    database: 'unhealthy',
+                });
+            }
+        };
+
+        checkHealth();
+    }, []);
 
     // بررسی فرمت صحیح شماره موبایل ایران (۱۱ رقم، شروع با 09)
     const iranianPhoneRegex = /^09\d{9}$/;
@@ -85,8 +135,9 @@ export default function LoginPage() {
 
             <Card className="w-full max-w-md bg-white/80 backdrop-blur-xl border border-slate-200/60 shadow-xl rounded-3xl p-4 z-10" shadow="none">
                 <CardHeader className="flex flex-col gap-y-2 items-center justify-center pt-6 pb-2">
-                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-700 mb-2">
-                        <ShieldCheck size={32} />
+                    <div className="flex items-center gap-3 justify-center mb-4 select-none">
+                        <LogoSign className="h-14 w-auto text-primary" />
+                        <LogoType className="h-14 w-auto text-primary" />
                     </div>
                     <h1 className="text-2xl font-bold text-slate-800">ورود به سامانه</h1>
                     <p className="text-sm text-slate-500 text-center">
@@ -189,6 +240,74 @@ export default function LoginPage() {
                         )}
                     </AnimatePresence>
                 </CardBody>
+
+                {/* بخش وضعیت سلامت سیستم */}
+                <div className="mt-2 pt-4 border-t border-slate-100 flex items-center justify-between px-3 text-[11px] font-medium text-slate-400">
+                    <span className="font-vazir select-none">وضعیت سیستم:</span>
+                    <div className="flex items-center gap-x-4">
+                        {/* فرانت اند */}
+                        <div className="flex items-center gap-1.5" title="وضعیت فرانت‌اند">
+                            <Monitor size={12} className="text-slate-400" />
+                            <span className="font-vazir text-slate-500">فرانت</span>
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-emerald-400"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                        </div>
+                        
+                        {/* بک اند */}
+                        <div className="flex items-center gap-1.5" title="وضعیت بک‌اند">
+                            <Server size={12} className="text-slate-400" />
+                            <span className="font-vazir text-slate-500">بک‌اند</span>
+                            <span className="relative flex h-2 w-2">
+                                {health.backend === 'loading' && (
+                                    <>
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-amber-400"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                    </>
+                                )}
+                                {health.backend === 'healthy' && (
+                                    <>
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-emerald-400"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                    </>
+                                )}
+                                {health.backend === 'unhealthy' && (
+                                    <>
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-rose-400"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                                    </>
+                                )}
+                            </span>
+                        </div>
+
+                        {/* دیتابیس */}
+                        <div className="flex items-center gap-1.5" title="وضعیت دیتابیس">
+                            <Database size={12} className="text-slate-400" />
+                            <span className="font-vazir text-slate-500">دیتابیس</span>
+                            <span className="relative flex h-2 w-2">
+                                {health.database === 'loading' && (
+                                    <>
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-amber-400"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                    </>
+                                )}
+                                {health.database === 'healthy' && (
+                                    <>
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-emerald-400"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                    </>
+                                )}
+                                {health.database === 'unhealthy' && (
+                                    <>
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-rose-400"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                                    </>
+                                )}
+                            </span>
+                        </div>
+                    </div>
+                </div>
             </Card>
         </div>
     );

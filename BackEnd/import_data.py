@@ -147,5 +147,5 @@ def load_parquet_to_db(file_path="dataset.parquet", column_names=None, table_nam
     print("🎉 Success! Entire process finished.")
 
 if __name__ == "__main__":
-    load_parquet_to_db(file_path="dim_unit.csv", table_name="dim_unit", delimiter="\x1b")
-    load_parquet_to_db(file_path="process_case.csv", column_names={"CASENO": "case_id", "UNITID": "unit_id", "DATETIME": "timestamp", "COURTTYPETITLE": "activity"}, table_name="process_case", delimiter="\x1b")
+    load_parquet_to_db(file_path="dim_unit.csv", table_name="dim_unit", delimiter=",")
+    load_parquet_to_db(file_path="process_case.csv", column_names={"CASENO": "case_id", "UNITID": "unit_id", "DATETIME": "timestamp", "COURTTYPETITLE": "activity"}, table_name="process_case", delimiter=",")

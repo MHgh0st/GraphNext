@@ -15,7 +15,8 @@ import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import type { SidebarTab } from "../types/types";
 import { TAB_THEMES } from "../constants/tabThemes";
 import { usePathname } from 'next/navigation';
-
+import LogoType from '../assets/images/type.svg'
+import LogoSign from '../assets/images/sign.svg'
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -191,10 +192,13 @@ function SideBar({
               transition={{ duration: 0.2 }}
               className="flex items-center gap-2 overflow-hidden"
             >
-              
-              <p className="font-extrabold text-sm text-slate-800 text-nowrap tracking-tight">
-                سامانه جریان
-              </p>
+
+              <LogoSign  className={`size-12 text-primary `}/>
+              <LogoType  className={`size-14 text-primary`}/>
+
+              {/*<p className="font-extrabold text-sm text-slate-800 text-nowrap tracking-tight">*/}
+              {/*  سامانه جریان*/}
+              {/*</p>*/}
             </motion.div>
           )}
         </AnimatePresence>

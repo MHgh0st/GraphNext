@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import GraphData, SearchCase, Stats, Auth # Auth اضافه شد
+import psycopg2
+from app.config import DATABASE_URL
+from app.api.routes import GraphData, SearchCase, Stats, Auth
 
 app = FastAPI(
     title="Process Mining Graph API",
@@ -25,7 +27,7 @@ app.include_router(SearchCase.router, prefix="/api", tags=["Case Search"])
 # Statistics - /api/stats/*
 app.include_router(Stats.router, prefix="/api/stats", tags=["Statistics"])
 
-# Auth Operations - /api/auth/* (این خط رو اضافه کن)
+# Auth Operations - /api/auth/*
 app.include_router(Auth.router, prefix="/api/auth", tags=["Authentication & Logging"])
 
 @app.get("/")
@@ -34,4 +36,19 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    db_status = "healthy"
+    try:
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=2)
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        conn.close()
+    except Exception as e:
+        print(f"Database health check failed: {e}")
+        db_status = "unhealthy"
+
+    return {
+        "status": "healthy" if db_status == "healthy" else "degraded",
+        "frontend": "healthy",
+        "backend": "healthy",
+        "database": db_status
+    }

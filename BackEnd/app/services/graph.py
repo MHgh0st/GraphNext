@@ -122,10 +122,10 @@ min_cases: Optional[int] = None, max_cases: Optional[int] = None, min_mean_time:
     # Apply filters
     if min_cases is not None:
         print(f"🔄 [GRAPH] Filtering: Case_Count >= {min_cases}")
-        final_df = final_df.filter(pl.col('Case_Count') >= min_cases)
+        final_df = final_df.filter(pl.col('Frequency') >= min_cases)
     if max_cases is not None:
         print(f"🔄 [GRAPH] Filtering: Case_Count <= {max_cases}")
-        final_df = final_df.filter(pl.col('Case_Count') <= max_cases)
+        final_df = final_df.filter(pl.col('Frequency') <= max_cases)
     if min_mean_time is not None:
         print(f"🔄 [GRAPH] Filtering: Mean_Duration_Seconds >= {min_mean_time}")
         final_df = final_df.filter(pl.col('Mean_Duration_Seconds') >= min_mean_time)

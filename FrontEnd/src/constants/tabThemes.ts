@@ -6,6 +6,7 @@ import {
   FolderSearch,
   Monitor,
   GitFork,
+  HelpCircle,
 } from "lucide-react";
 import type { SidebarTab } from "../types/types";
 
@@ -76,5 +77,14 @@ export const TAB_THEMES: Record<SidebarTab, TabThemeConfig> = {
     activeClass: "bg-slate-100 text-slate-800 shadow-sm",
     indicatorClass: "bg-slate-600",
     iconActiveClass: "text-slate-700",
+  },
+  Guide: {
+    title: "راهنما",
+    icon: HelpCircle,
+    path:"/guide",
+    // فیروزه‌ای/آبی‌آسمانی (Teal/Cyan)
+    activeClass: "bg-teal-50/80 text-teal-700 shadow-[0_4px_12px_-4px_rgba(20,184,166,0.2)]",
+    indicatorClass: "bg-teal-500",
+    iconActiveClass: "text-teal-600",
   },
 };
