@@ -70,6 +70,16 @@ function Filters() {
   const [timeUnitFilter, setTimeUnitFilter] = useState<TimeUnit>("d");
   const [outlierPercentage, setOutlierPercentage] = useState<number | number[]>(5);
 
+  // Stable callbacks so TimeFilterSection's useEffect doesn't loop on a new ref each render
+  const setMinTime = useCallback(
+    (time: number | null) => setMeanTimeRange((prev) => ({ ...prev, min: time })),
+    []
+  );
+  const setMaxTime = useCallback(
+    (time: number | null) => setMeanTimeRange((prev) => ({ ...prev, max: time })),
+    []
+  );
+
   // Sync state from currentFilters if available
   useEffect(() => {
     if (currentFilters) {
@@ -190,8 +200,8 @@ function Filters() {
                     }}
                     value={caseIdRange.min}
                     minValue={0}
-                    onChange={(value) =>
-                      setCaseIdRange((prev) => ({ ...prev, min: Number(value) }))
+                    onValueChange={(value) =>
+                      setCaseIdRange((prev) => ({ ...prev, min: value }))
                     }
                   />
                   <NumberInput
@@ -205,8 +215,8 @@ function Filters() {
                     }}
                     value={caseIdRange.max}
                     minValue={0}
-                    onChange={(value) =>
-                      setCaseIdRange((prev) => ({ ...prev, max: Number(value) }))
+                    onValueChange={(value) =>
+                      setCaseIdRange((prev) => ({ ...prev, max: value }))
                     }
                   />
                 </div>
@@ -229,11 +239,11 @@ function Filters() {
                 <div className="p-4 rounded-2xl bg-white/50 border border-white/60 backdrop-blur-sm shadow-sm space-y-5">
                   <TimeFilterSection
                     title="حداقل زمان:"
-                    setTime={(time) => setMeanTimeRange((prev) => ({ ...prev, min: time }))}
+                    setTime={setMinTime}
                   />
                   <TimeFilterSection
                     title="حداکثر زمان:"
-                    setTime={(time) => setMeanTimeRange((prev) => ({ ...prev, max: time }))}
+                    setTime={setMaxTime}
                   />
 
                   <Divider className="bg-slate-200/60" />

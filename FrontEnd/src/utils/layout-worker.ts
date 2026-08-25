@@ -22,8 +22,8 @@ self.onmessage = async (event: MessageEvent) => {
         endActivities,
       }: {
         graphData: GraphDataItem[];
-        startActivities: string[];
-        endActivities: string[];
+        startActivities: { node: string; count: number }[];
+        endActivities: { node: string; count: number }[];
       } = payload;
       const nodeWidth = 250; 
 
@@ -106,24 +106,44 @@ self.onmessage = async (event: MessageEvent) => {
         };
       });
 
+      console.log('startActivities: ', startActivities)
+
       const startEdges: Edge[] = startActivities
-        .filter((targetId) => validNodeIds.has(targetId))
-        .map((targetNodeId) => ({
-          id: `start-to-${targetNodeId}`,
+        .filter((act) => validNodeIds.has(act.node))
+        .map((act) => ({
+          id: `start-to-${act.node}`,
           source: startNode.id,
-          target: targetNodeId,
-          data: { originalStroke: "#a0aec0", originalStrokeWidth: 1.5 },
-          style: { stroke: "#a0aec0", strokeDasharray: "5 5" },
+          target: act.node,
+          label: `${act.count}`, // 🟢 نمایش زنده تعداد پرونده روی خط گراف
+          data: {
+            Case_Count: act.count, // 🟢 تزریق فیلد حیاتی برای استفاده در NodeTooltip
+            Weight_Value: act.count,
+            Edge_Label: `${act.count}`,
+            Tooltip_Mean_Time: "N/A",
+            Tooltip_Total_Time: "N/A",
+            originalStroke: "#a0aec0",
+            originalStrokeWidth: 1.5
+          },
+          style: { stroke: "#a0aec0", strokeDasharray: "5 5", strokeWidth: 1.5 },
         }));
 
       const endEdges: Edge[] = endActivities
-        .filter((sourceId) => validNodeIds.has(sourceId))
-        .map((sourceNodeId) => ({
-          id: `${sourceNodeId}-to-end`,
-          source: sourceNodeId,
+        .filter((act) => validNodeIds.has(act.node))
+        .map((act) => ({
+          id: `${act.node}-to-end`,
+          source: act.node,
           target: endNode.id,
-          data: { originalStroke: "#a0aec0", originalStrokeWidth: 1.5 },
-          style: { stroke: "#a0aec0", strokeDasharray: "5 5" },
+          label: `${act.count}`, // 🟢 نمایش زنده تعداد پرونده روی خط گراف
+          data: {
+            Case_Count: act.count, // 🟢 تزریق فیلد حیاتی برای استفاده در NodeTooltip
+            Weight_Value: act.count,
+            Edge_Label: `${act.count}`,
+            Tooltip_Mean_Time: "N/A",
+            Tooltip_Total_Time: "N/A",
+            originalStroke: "#a0aec0",
+            originalStrokeWidth: 1.5
+          },
+          style: { stroke: "#a0aec0", strokeDasharray: "5 5", strokeWidth: 1.5 },
         }));
 
       allEdges = [...allEdges, ...startEdges, ...endEdges];

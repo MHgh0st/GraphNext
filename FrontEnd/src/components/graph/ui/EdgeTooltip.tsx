@@ -70,6 +70,26 @@ export default function EdgeTooltip({
         hoverBg: "hover:bg-amber-100/50"
       };
     }
+    if (label.includes("حداقل") || label.includes("حداکثر") || label.includes("میانه")) {
+      return {
+        icon: <Clock size={16} />,
+        textColor: "text-emerald-600",
+        bgColor: "bg-emerald-50/60",
+        borderColor: "border-emerald-100/60",
+        hoverBg: "hover:bg-emerald-100/40"
+      };
+    }
+    if (label.includes("انحراف") || label.includes("انشعاب")) {
+      return {
+        icon: <Network size={16} />,
+        textColor: "text-indigo-600",
+        bgColor: "bg-indigo-50/60",
+        borderColor: "border-indigo-100/40",
+        hoverBg: "hover:bg-indigo-100/40"
+      };
+    }
+
+
     return {
       icon: <Network size={16} />,
       textColor: "text-slate-500",
@@ -143,7 +163,7 @@ export default function EdgeTooltip({
         {/* Stats Grid */}
         <div className="p-4">
           {edgeTooltipData.length > 0 ? (
-            <div className={`grid gap-2 ${edgeTooltipData.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            <div className={`grid grid-cols-2 gap-2`}>
               {edgeTooltipData.map((item, index) => {
                 const theme = getStatTheme(item.label);
                 

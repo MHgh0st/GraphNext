@@ -140,6 +140,10 @@ export interface ExtendedPath extends Path {
   _specificEdgeDurations?: Record<string, number>;
   /** Total duration for each edge keyed by edge ID (from Total_Timings) */
   _specificTotalDurations?: Record<string, number>;
+  _specificMinDurations?: Record<string, number>;
+  _specificMaxDurations?: Record<string, number>;
+  _specificMedianDurations?: Record<string, number>;
+  _specificStdDurations?: Record<string, number>;
   /** Number of times each edge appears in the path keyed by edge ID */
   _specificEdgeCounts?: Record<string, number>;
 }
@@ -207,6 +211,13 @@ export interface GraphData {
   Source_CourtType?: string;
   Target_PublicCourtType?: string;
   Target_CourtType?: string;
+
+  Min_Duration_Seconds: number;
+  Max_Duration_Seconds: number;
+  Std_Duration_Seconds: number;
+  Median_Duration_Seconds: number;
+  Branching_Probability: number
+
 }
 
 /**
@@ -224,6 +235,10 @@ export interface Variant {
   Avg_Timings: number[];
   /** Total timing for each transition (seconds) */
   Total_Timings: number[];
+  Min_Timings: number[];
+  Max_Timings: number[];
+  Median_Timings: number[];
+  Std_Timings: number[];
   /** Percentage of total cases this variant represents */
   Percentage: number;
   /** Optional: Unit ID for cases in this variant */
@@ -323,4 +338,6 @@ export interface NodeTooltipType {
   weight: string | number;
   /** Whether this edge is incoming or outgoing */
   direction: "incoming" | "outgoing";
+
+  caseCount: number;
 }

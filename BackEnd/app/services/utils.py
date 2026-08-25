@@ -74,8 +74,6 @@ def _vectorized_calc(times_series: pl.Series, func: Any) -> List[List[float]]:
     if n_rows == 0:
         return []
         
-    is_mean = (func is np.mean) or getattr(func, '__name__', '') == 'mean'
-    
     df = times_series.to_frame("Times_List")
     if hasattr(df, "with_row_index"):
         df = df.with_row_index("idx")
@@ -121,8 +119,18 @@ def _vectorized_calc(times_series: pl.Series, func: Any) -> List[List[float]]:
     if not value_cols:
          return [[] for _ in range(n_rows)]
          
-    if is_mean:
+    func_name = getattr(func, '__name__', '')
+    
+    if func is np.mean or func_name == 'mean':
         aggs = [pl.col(c).cast(pl.Float64).mean().round(2) for c in value_cols]
+    elif func is np.min or func_name == 'amin':
+        aggs = [pl.col(c).cast(pl.Float64).min().round(2) for c in value_cols]
+    elif func is np.max or func_name == 'amax':
+        aggs = [pl.col(c).cast(pl.Float64).max().round(2) for c in value_cols]
+    elif func is np.median or func_name == 'median':
+        aggs = [pl.col(c).cast(pl.Float64).median().round(2) for c in value_cols]
+    elif func is np.std or func_name == 'std':
+        aggs = [pl.col(c).cast(pl.Float64).std().round(2) for c in value_cols]
     else:
         aggs = [pl.col(c).cast(pl.Float64).sum().round(2) for c in value_cols]
         

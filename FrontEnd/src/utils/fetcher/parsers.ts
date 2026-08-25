@@ -13,12 +13,18 @@ import type { GraphData, Variant } from "../../types/types";
 // TYPES
 // ============================================================================
 
+
+export interface ActivityCountItem {
+  node: string;
+  count: number;
+}
+
 /** Shape of the msgpack container returned by the backend. */
 export interface GraphContainer {
   graphData: Uint8Array;      // Arrow IPC bytes
   allVariants: Uint8Array;    // Arrow IPC bytes
-  startActivities: string[];
-  endActivities: string[];
+  startActivities: ActivityCountItem[];
+  endActivities: ActivityCountItem[];
   targetCoverage: number;
 }
 
@@ -27,8 +33,8 @@ export interface ParsedGraphResponse {
   graphData: GraphData[];
   variants: Variant[];
   outliers: Variant[];
-  startActivities: string[];
-  endActivities: string[];
+  startActivities: ActivityCountItem[];
+  endActivities: ActivityCountItem[];
 }
 
 // ============================================================================
@@ -63,6 +69,12 @@ export function parseGraphTable(table: import("apache-arrow").Table): GraphData[
       Weight_Value:          table.getChild("Weight_Value")?.get(i) as number,
       Edge_Label:            table.getChild("Edge_Label")?.get(i) as string,
       Case_Count:            table.getChild("Case_Count")?.get(i) as number,
+
+      Min_Duration_Seconds:    table.getChild("Min_Duration_Seconds")?.get(i) as number,
+      Max_Duration_Seconds:    table.getChild("Max_Duration_Seconds")?.get(i) as number,
+      Std_Duration_Seconds:    table.getChild("Std_Duration_Seconds")?.get(i) as number,
+      Median_Duration_Seconds: table.getChild("Median_Duration_Seconds")?.get(i) as number,
+      Branching_Probability:   table.getChild("Branching_Probability")?.get(i) as number,
     });
   }
   return rows;
@@ -83,6 +95,10 @@ export function parseVariantsTable(
     const Variant_Path: string[] = toArray(table.getChild("Variant_Path")?.get(i));
     const Avg_Timings: number[]  = toArray(table.getChild("Avg_Timings")?.get(i));
     const Total_Timings: number[] = toArray(table.getChild("Total_Timings")?.get(i));
+    const Min_Timings: number[] = toArray(table.getChild("Min_Timings")?.get(i));
+    const Max_Timings: number[] = toArray(table.getChild("Max_Timings")?.get(i));
+    const Median_Timings: number[] = toArray(table.getChild("Median_Timings")?.get(i));
+    const Std_Timings: number[] = toArray(table.getChild("Std_Timings")?.get(i));
 
     const variant: Variant = {
       Variant_Path,
@@ -90,6 +106,10 @@ export function parseVariantsTable(
       Percentage: table.getChild("Percentage")?.get(i) as number,
       Avg_Timings,
       Total_Timings,
+      Min_Timings,
+      Max_Timings,
+      Median_Timings,
+      Std_Timings,
       UnitID:     table.getChild("UnitID")?.get(i) as number | undefined,
     };
 

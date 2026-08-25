@@ -34,6 +34,7 @@ services:
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
       - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - INTERNAL_API_URL=http://backend:8000
     # command: sh -c "pnpm run build && pnpm run start"
     command: pnpm run dev
 

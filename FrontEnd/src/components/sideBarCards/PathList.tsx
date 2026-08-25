@@ -182,6 +182,10 @@ export const PathList = ({
     setItemsToShow((prev) => ({ ...prev, [key]: prev[key] + 50 }));
   };
 
+  const totalFrequency = useMemo(() => {
+    return paths.reduce((sum, p) => sum + ((p as ExtendedPath)._frequency || 0), 0);
+  }, [paths]);
+
   const { absolutePaths, relativePaths, otherPaths } = useMemo(() => {
     if (!groupByType) return { absolutePaths: [], relativePaths: [], otherPaths: paths };
 
@@ -241,11 +245,11 @@ export const PathList = ({
                     <div className="flex items-center gap-2">
                          <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-blue-500 animate-pulse" : "bg-slate-300"}`} />
                          <span>مسیر {globalIndex + 1}</span>
-                         {extPath._frequency && (
-                             <Chip size="sm" variant="flat" className="bg-slate-100 text-slate-500 border border-slate-200 h-5 text-[10px] px-1">
-                                {extPath._frequency} تکرار
-                             </Chip>
-                         )}
+                      {extPath._frequency && (
+                        <Chip size="sm" variant="flat" className="bg-blue-50 text-blue-600 border border-blue-100 h-5 text-[10px] px-1.5 font-bold">
+                          {extPath._frequency.toLocaleString("fa-IR")} از {totalFrequency.toLocaleString("fa-IR")} پرونده
+                        </Chip>
+                      )}
                     </div>
                 }
                 subtitle={

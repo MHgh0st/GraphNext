@@ -80,7 +80,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     const [isSideCardVisible, setIsSideCardVisible]= useState<boolean>(true)
 
     // --- استیت‌های مربوط به تغییر عرض (Resizing) ---
-    const [cardWidth, setCardWidth] = useState<number>(380); // عرض پیش‌فرض ۳۸۰ پیکسل
+    const [cardWidth, setCardWidth] = useState<number>(450); // عرض پیش‌فرض ۳۸۰ پیکسل
     const [isResizing, setIsResizing] = useState<boolean>(false);
 
     // Get state from stores

@@ -43,6 +43,10 @@ interface EdgeTooltipOverride {
   meanTime?: string;
   totalTime?: string;
   rawDuration?: number;
+  minTime?: number;
+  maxTime?: number;
+  medianTime?: number;
+  stdTime?: number;
 }
 
 interface CustomEdgeData extends Record<string, unknown> {
@@ -553,7 +557,7 @@ function InnerGraph({
     <div ref={containerRef} className={`${className} w-full h-full`}>
       <div className="relative w-full h-full">
         {isNodeCardVisible && (
-          <Card className="absolute right-2 z-50 p-2 max-h-[250px] min-w-[40%] shadow-xl">
+          <Card className="absolute right-2 z-50 p-2 max-h-[350px] min-w-[40%] shadow-xl">
             <NodeTooltip
               nodeTooltipTitle={nodeTooltipTitle}
               nodeTooltipData={nodeTooltipData}

@@ -80,45 +80,62 @@ def enrich_variants_with_timings(variants_df: pl.DataFrame) -> pl.DataFrame:
         print("⚠️ [VARIANTS] DataFrame is empty, returning with empty timing columns.")
         return variants_df.with_columns([
              pl.lit([]).alias('Avg_Timings'),
-             pl.lit([]).alias('Total_Timings')
+             pl.lit([]).alias('Total_Timings'),
+             pl.lit([]).alias('Min_Timings'),
+             pl.lit([]).alias('Max_Timings'),
+             pl.lit([]).alias('Median_Timings'),
+             pl.lit([]).alias('Std_Timings'),
         ])
 
     print(f"   [VARIANTS] Processing {variants_df.shape[0]} variants...")
     avg_timings = safe_calc_list_stats(variants_df['Times_List'], np.mean)
     total_timings = safe_calc_list_stats(variants_df['Times_List'], np.sum)
     
-    # Debug: Check lengths
-    print(f"   [VARIANTS] Sample Variant_Path lengths: {variants_df.head(5).select(pl.col('Variant_Path').list.len()).to_series().to_list()}")
-    print(f"   [VARIANTS] Sample Avg_Timings lengths: {[len(x) for x in avg_timings[:5]]}")
+    # Calculate edge durations for min, max, median, std
+    def _calc_edge_diffs(times_series: pl.Series) -> List[List[List[float]]]:
+        rows = times_series.to_list()
+        edge_durations = []
+        for case_times_list in rows:
+            diffs = []
+            if case_times_list:
+                for lst in case_times_list:
+                    if lst and isinstance(lst, list) and len(lst) > 1:
+                        diffs.append([round(x, 2) for x in np.diff(lst).tolist()])
+                    else:
+                        diffs.append([])
+            edge_durations.append(diffs)
+        return edge_durations
+
+    edge_series = pl.Series("Edge_Durations_List", _calc_edge_diffs(variants_df['Times_List']))
+    
+    min_timings = safe_calc_list_stats(edge_series, np.min)
+    max_timings = safe_calc_list_stats(edge_series, np.max)
+    median_timings = safe_calc_list_stats(edge_series, np.median)
+    std_timings = safe_calc_list_stats(edge_series, np.std)
 
     result = variants_df.with_columns([
         pl.Series(avg_timings).alias('Avg_Timings'),
-        pl.Series(total_timings).alias('Total_Timings')
+        pl.Series(total_timings).alias('Total_Timings'),
+        pl.Series(min_timings).alias('Min_Timings'),
+        pl.Series(max_timings).alias('Max_Timings'),
+        pl.Series(median_timings).alias('Median_Timings'),
+        pl.Series(std_timings).alias('Std_Timings'),
     ])
-    
-    # Verify lengths match
-    mismatch_check = result.select(
-        (pl.col('Variant_Path').list.len() != pl.col('Avg_Timings').list.len()).sum().alias('mismatches')
-    ).item()
-    if mismatch_check > 0:
-        print(f"⚠️ [VARIANTS] WARNING: {mismatch_check} rows have mismatched Variant_Path/Avg_Timings lengths!")
-    else:
-        print("   [VARIANTS] All Variant_Path and Avg_Timings lengths match ✓")
     
     print("✅ [VARIANTS] enrich_variants_with_timings: Done.")
     return result
 
-def extract_nodes_heatmap(variants_df: pl.DataFrame, node_type: str, count_col: str, coverage: float = 0.95) -> List[str]:
-    """Calculates top nodes utilizing fast Polars group_by operations instead of iter_rows."""
+def extract_nodes_heatmap(variants_df: pl.DataFrame, node_type: str, count_col: str, coverage: float = 0.95) -> List[dict]:
+    """Calculates top nodes with their frequencies utilizing fast Polars group_by operations."""
     print(f"🔄 [VARIANTS] extract_nodes_heatmap: Extracting {node_type} nodes (Polars Optimized)...")
-    
+
     if variants_df.is_empty():
         return []
 
     # انتخاب نود اول یا آخر با استفاده از متدهای list
     target_index = 0 if node_type == 'start' else -1
-    
-    # 1. استخراج نودها و تعدادشان
+
+    # ۱. استخراج نودها و تعداد تکرار تجمعی آن‌ها
     nodes_agg = (
         variants_df
         .filter(pl.col(count_col) > 0)
@@ -144,13 +161,16 @@ def extract_nodes_heatmap(variants_df: pl.DataFrame, node_type: str, count_col: 
         .filter(
             (pl.col('Running_Coverage').shift(1, fill_value=0.0) < coverage)
         )
-        .select('Node')
-        .to_series()
-        .to_list()
     )
 
-    print(f"✅ [VARIANTS] extract_nodes_heatmap: Found {len(selected_nodes)} {node_type} nodes.")
-    return selected_nodes
+    # 🟢 خروجی را به صورت ساختار کلید/مقدار برای فرانت‌اند آماده می‌کنیم
+    result = [
+        {"node": row["Node"], "count": row["Total_Count"]}
+        for row in selected_nodes.iter_rows(named=True)
+    ]
+
+    print(f"✅ [VARIANTS] extract_nodes_heatmap: Found {len(result)} {node_type} nodes.")
+    return result
 
 def get_variants_logic(
     df_lazy: pl.LazyFrame,
@@ -188,7 +208,11 @@ def get_variants_logic(
         'Percentage', 
         'cum_coverage', 
         'Avg_Timings', 
-        'Total_Timings'
+        'Total_Timings',
+        'Min_Timings',
+        'Max_Timings',
+        'Median_Timings',
+        'Std_Timings'
     ]
     
     print(f"✂️ [VARIANTS] Selecting columns: {wanted_columns}")

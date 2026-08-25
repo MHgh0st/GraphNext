@@ -146,6 +146,10 @@ export default function PathfindingPage() {
         let totalDuration = 0;
         const edgeDurations: Record<string, number> = {};
         const edgeTotalDurations: Record<string, number> = {};
+        const edgeMinDurations: Record<string, number> = {};
+        const edgeMaxDurations: Record<string, number> = {};
+        const edgeMedianDurations: Record<string, number> = {};
+        const edgeStdDurations: Record<string, number> = {};
         
         // Loop through activities and calculate edge durations as differences
         for (let i = startTimingIndex; i < endTimingIndex && (i + 1) < variant.Avg_Timings.length; i++) {
@@ -167,6 +171,20 @@ export default function PathfindingPage() {
           const edgeId = `${edgeSource}->${edgeTarget}`;
           edgeDurations[edgeId] = avgDuration;
           edgeTotalDurations[edgeId] = totalTimingDuration;
+
+          // New metrics are already edge durations (length N-1)
+          if (variant.Min_Timings && variant.Min_Timings[i] !== undefined) {
+             edgeMinDurations[edgeId] = variant.Min_Timings[i];
+          }
+          if (variant.Max_Timings && variant.Max_Timings[i] !== undefined) {
+             edgeMaxDurations[edgeId] = variant.Max_Timings[i];
+          }
+          if (variant.Median_Timings && variant.Median_Timings[i] !== undefined) {
+             edgeMedianDurations[edgeId] = variant.Median_Timings[i];
+          }
+          if (variant.Std_Timings && variant.Std_Timings[i] !== undefined) {
+             edgeStdDurations[edgeId] = variant.Std_Timings[i];
+          }
         }
         
         path.totalDuration = totalDuration;
@@ -175,6 +193,10 @@ export default function PathfindingPage() {
         path._variantTimings = variant.Avg_Timings.slice(startTimingIndex, endTimingIndex + 1); // Include end timestamp
         path._specificEdgeDurations = edgeDurations;
         path._specificTotalDurations = edgeTotalDurations;
+        path._specificMinDurations = edgeMinDurations;
+        path._specificMaxDurations = edgeMaxDurations;
+        path._specificMedianDurations = edgeMedianDurations;
+        path._specificStdDurations = edgeStdDurations;
       }
       
       paths.push(path);
@@ -394,6 +416,10 @@ export default function PathfindingPage() {
 
   const edgeTotalDurations: Record<string, number> = {};
   const edgeCounts: Record<string, number> = {};
+  const edgeMinDurations: Record<string, number> = {};
+  const edgeMaxDurations: Record<string, number> = {};
+  const edgeMedianDurations: Record<string, number> = {};
+  const edgeStdDurations: Record<string, number> = {};
 
   selectedPaths.forEach(path => {
     path.nodes.forEach(n => combinedNodes.add(n));
@@ -405,11 +431,29 @@ export default function PathfindingPage() {
     // جمع‌آوری اطلاعات یال‌ها برای محاسبه میانگین و مجموع
     path.edges.forEach(edgeId => {
       const count = path._specificEdgeCounts?.[edgeId] || pathFreq;
-      edgeCounts[edgeId] = (edgeCounts[edgeId] || 0) + count;
+      const prevCount = edgeCounts[edgeId] || 0;
+      edgeCounts[edgeId] = prevCount + count;
       
       const totalDur = path._specificTotalDurations?.[edgeId] 
                        || (path._specificEdgeDurations?.[edgeId] || 0) * count;
       edgeTotalDurations[edgeId] = (edgeTotalDurations[edgeId] || 0) + totalDur;
+
+      if (path._specificMinDurations?.[edgeId] !== undefined) {
+        edgeMinDurations[edgeId] = Math.min(edgeMinDurations[edgeId] ?? Infinity, path._specificMinDurations[edgeId]);
+      }
+      if (path._specificMaxDurations?.[edgeId] !== undefined) {
+        edgeMaxDurations[edgeId] = Math.max(edgeMaxDurations[edgeId] ?? -Infinity, path._specificMaxDurations[edgeId]);
+      }
+      if (path._specificMedianDurations?.[edgeId] !== undefined) {
+        edgeMedianDurations[edgeId] = (
+          (edgeMedianDurations[edgeId] || 0) * prevCount + path._specificMedianDurations[edgeId] * count
+        ) / edgeCounts[edgeId];
+      }
+      if (path._specificStdDurations?.[edgeId] !== undefined) {
+        edgeStdDurations[edgeId] = (
+          (edgeStdDurations[edgeId] || 0) * prevCount + path._specificStdDurations[edgeId] * count
+        ) / edgeCounts[edgeId];
+      }
     });
   });
 
@@ -432,6 +476,10 @@ export default function PathfindingPage() {
     _specificEdgeDurations: edgeDurations,
     _specificTotalDurations: edgeTotalDurations,
     _specificEdgeCounts: edgeCounts,
+    _specificMinDurations: edgeMinDurations,
+    _specificMaxDurations: edgeMaxDurations,
+    _specificMedianDurations: edgeMedianDurations,
+    _specificStdDurations: edgeStdDurations,
   } as ExtendedPath;
 }, []);
 
@@ -485,6 +533,10 @@ export default function PathfindingPage() {
     edgeDurations: combinedPath._specificEdgeDurations || {},
     edgeTotalDurations: combinedPath._specificTotalDurations || {},
     edgeCounts: combinedPath._specificEdgeCounts || {},
+    edgeMinDurations: combinedPath._specificMinDurations || {},
+    edgeMaxDurations: combinedPath._specificMaxDurations || {},
+    edgeMedianDurations: combinedPath._specificMedianDurations || {},
+    edgeStdDurations: combinedPath._specificStdDurations || {},
     frequency: combinedPath._frequency || combinedPath.frequency,
   };
   
@@ -606,6 +658,10 @@ export default function PathfindingPage() {
             edgeDurations: combinedPath._specificEdgeDurations || {},
             edgeTotalDurations: combinedPath._specificTotalDurations || {},
             edgeCounts: combinedPath._specificEdgeCounts || {},
+            edgeMinDurations: combinedPath._specificMinDurations || {},
+            edgeMaxDurations: combinedPath._specificMaxDurations || {},
+            edgeMedianDurations: combinedPath._specificMedianDurations || {},
+            edgeStdDurations: combinedPath._specificStdDurations || {},
             frequency: combinedPath._frequency || combinedPath.frequency,
           },
           searchCasePathInfo: undefined,

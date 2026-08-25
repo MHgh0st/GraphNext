@@ -21,6 +21,12 @@ import type { Path, Variant, ExtendedPath, NodeTooltipType } from "../types/type
 // TYPES
 // ============================================================================
 
+
+export interface ActivityCountItem {
+  node: string;
+  count: number;
+}
+
 export interface ActivePathInfo {
   nodes: string[];
   edges: string[];
@@ -30,6 +36,10 @@ export interface ActivePathInfo {
   edgeTotalDurations?: Record<string, number>;
   /** Number of times each edge appears in the path keyed by edge ID */
   edgeCounts?: Record<string, number>;
+  edgeMinDurations?: Record<string, number>;
+  edgeMaxDurations?: Record<string, number>;
+  edgeMedianDurations?: Record<string, number>;
+  edgeStdDurations?: Record<string, number>;
   /** Frequency of this path */
   frequency?: number;
 }
@@ -42,7 +52,7 @@ export interface SearchCasePathInfo {
 export interface LayoutConfig {
   graphData: any[] | null;
   colorPaletteKey: string;
-  startEndNodes: { start: string[]; end: string[] };
+  startEndNodes: { start: ActivityCountItem[]; end: ActivityCountItem[] };
   filteredNodeIds: Set<string>;
   filteredEdgeIds: Set<string> | null;
   activePathInfo?: ActivePathInfo;
@@ -96,7 +106,7 @@ interface GraphActions {
   
   // Compute Layout
   computeLayout: (config: LayoutConfig) => Promise<void>;
-  processInitialData: (graphData: any[], startActivities: string[], endActivities: string[]) => void;
+  processInitialData: (graphData: any[], startActivities: ActivityCountItem[], endActivities: ActivityCountItem[]) => void;
   
   // Interaction Actions
   handleNodeClick: (event: React.MouseEvent, node: Node, variants: Variant[], selectedPathNodes: Set<string>, setSelectedPathNodes: (nodes: Set<string>) => void, selectedPathEdges: Set<string>, setSelectedPathEdges: (edges: Set<string>) => void) => void;
@@ -192,6 +202,12 @@ export function calculateEdgeOverride(
     
     // Use Total_Timings if available, otherwise fall back to avgDuration
     const totalDuration = (activePath as any)._specificTotalDurations?.[edge.id] ?? avgDuration;
+    
+    const minTime = activePath._specificMinDurations?.[edge.id];
+    const maxTime = activePath._specificMaxDurations?.[edge.id];
+    const medianTime = activePath._specificMedianDurations?.[edge.id];
+    const stdTime = activePath._specificStdDurations?.[edge.id];
+
     return {
       displayLabel,
       tooltipOverride: {
@@ -199,6 +215,10 @@ export function calculateEdgeOverride(
         meanTime: tooltipMeanTime,
         totalTime: formatDuration(totalDuration),
         rawDuration: avgDuration,
+        minTime,
+        maxTime,
+        medianTime,
+        stdTime,
       },
     };
   }
@@ -328,6 +348,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     const nodesMap: Map<string, Node> = new Map();
     const edgesMap: Map<string, Edge> = new Map();
 
+    // 🟢 تبدیل ساختارهای شیء به مپ جهت بررسی سریع لایه کلیدها در کسری از میلی‌ثانیه
+    const startNodesMap = new Map(startActivities.map(a => [a.node, a.count]));
+    const endNodesMap = new Map(endActivities.map(a => [a.node, a.count]));
+
     // Collect all valid node IDs from graph data
     const validNodeIds = new Set<string>();
     graphData.forEach((item: any) => {
@@ -348,8 +372,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
           data: {
             label: source,
             type: "activity",
-            isStart: startActivities.includes(source),
-            isEnd: endActivities.includes(source),
+            isStart: startNodesMap.has(source), // 🟢 اصلاح شد
+            isEnd: endNodesMap.has(source),     // 🟢 اصلاح شد
           },
           style: { width: 250 },
           draggable: true,
@@ -365,8 +389,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
           data: {
             label: target,
             type: "activity",
-            isStart: startActivities.includes(target),
-            isEnd: endActivities.includes(target),
+            isStart: startNodesMap.has(target), // 🟢 اصلاح شد
+            isEnd: endNodesMap.has(target),     // 🟢 اصلاح شد
           },
           style: { width: 250 },
           draggable: true,
@@ -388,11 +412,15 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
             Mean_Duration_Seconds: item.Mean_Duration_Seconds,
             Tooltip_Total_Time: item.Tooltip_Total_Time,
             Tooltip_Mean_Time: item.Tooltip_Mean_Time,
+            Min_Duration_Seconds: item.Min_Duration_Seconds,
+            Max_Duration_Seconds: item.Max_Duration_Seconds,
+            Median_Duration_Seconds: item.Median_Duration_Seconds,
+            Std_Duration_Seconds: item.Std_Duration_Seconds,
+            Branching_Probability: item.Branching_Probability,
           },
         });
       }
     });
-    
 
     // Create START_NODE
     const startNode: Node = {
@@ -416,32 +444,50 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     };
     nodesMap.set("END_NODE", endNode);
 
-    // Create edges from START_NODE to start activities
+    // 🟢 ایجاد و کست اصولی یال‌های متصل به START_NODE همراه با حجم پرونده‌ها
     startActivities
-      .filter((targetId) => validNodeIds.has(targetId))
-      .forEach((targetNodeId) => {
-        const edgeId = `start-to-${targetNodeId}`;
+      .filter((act) => validNodeIds.has(act.node))
+      .forEach((act) => {
+        const edgeId = `start-to-${act.node}`;
         edgesMap.set(edgeId, {
           id: edgeId,
           source: "START_NODE",
-          target: targetNodeId,
+          target: act.node,
           type: "default",
-          data: { originalStroke: "#a0aec0", originalStrokeWidth: 1.5 },
+          label: `${act.count}`, // نمایش حجم روی لبه خط‌چین
+          data: {
+            Case_Count: act.count,
+            Weight_Value: act.count,
+            Edge_Label: `${act.count}`,
+            Tooltip_Mean_Time: "N/A",
+            Tooltip_Total_Time: "N/A",
+            originalStroke: "#a0aec0",
+            originalStrokeWidth: 1.5
+          },
           style: { stroke: "#a0aec0", strokeDasharray: "5 5" },
         });
       });
 
-    // Create edges from end activities to END_NODE
+    // 🟢 ایجاد و کست اصولی یال‌های متصل به END_NODE همراه با حجم پرونده‌ها
     endActivities
-      .filter((sourceId) => validNodeIds.has(sourceId))
-      .forEach((sourceNodeId) => {
-        const edgeId = `${sourceNodeId}-to-end`;
+      .filter((act) => validNodeIds.has(act.node))
+      .forEach((act) => {
+        const edgeId = `${act.node}-to-end`;
         edgesMap.set(edgeId, {
           id: edgeId,
-          source: sourceNodeId,
+          source: act.node,
           target: "END_NODE",
           type: "default",
-          data: { originalStroke: "#a0aec0", originalStrokeWidth: 1.5 },
+          label: `${act.count}`, // نمایش حجم روی لبه خط‌چین
+          data: {
+            Case_Count: act.count,
+            Weight_Value: act.count,
+            Edge_Label: `${act.count}`,
+            Tooltip_Mean_Time: "N/A",
+            Tooltip_Total_Time: "N/A",
+            originalStroke: "#a0aec0",
+            originalStrokeWidth: 1.5
+          },
           style: { stroke: "#a0aec0", strokeDasharray: "5 5" },
         });
       });
@@ -798,6 +844,32 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       const totalTimeValue = finalOverrides?.totalTime || (clickedEdge?.data?.Tooltip_Total_Time as string);
       if (totalTimeValue) dataToShow.push({ label: "زمان کل", value: totalTimeValue });
 
+      const isPathMode = !!finalOverrides;
+      const minTime = finalOverrides?.minTime !== undefined ? finalOverrides.minTime : (isPathMode ? undefined : clickedEdge?.data?.Min_Duration_Seconds);
+      if (typeof minTime === "number" && minTime >= 0) {
+        dataToShow.push({ label: "حداقل زمان", value: formatDuration(minTime) });
+      }
+
+      const maxTime = finalOverrides?.maxTime !== undefined ? finalOverrides.maxTime : (isPathMode ? undefined : clickedEdge?.data?.Max_Duration_Seconds);
+      if (typeof maxTime === "number") {
+        dataToShow.push({ label: "حداکثر زمان", value: formatDuration(maxTime) });
+      }
+
+      const medianTime = finalOverrides?.medianTime !== undefined ? finalOverrides.medianTime : (isPathMode ? undefined : clickedEdge?.data?.Median_Duration_Seconds);
+      if (typeof medianTime === "number") {
+        dataToShow.push({ label: "میانه زمان", value: formatDuration(medianTime) });
+      }
+
+      const stdTime = finalOverrides?.stdTime !== undefined ? finalOverrides.stdTime : (isPathMode ? undefined : clickedEdge?.data?.Std_Duration_Seconds);
+      if (typeof stdTime === "number") {
+        dataToShow.push({ label: "انحراف معیار", value: formatDuration(stdTime) });
+      }
+
+      const prob = clickedEdge?.data?.Branching_Probability;
+      if (typeof prob === "number") {
+        dataToShow.push({ label: "احتمال انشعاب", value: `${prob.toLocaleString("fa-IR")}٪` });
+      }
+
       // In one pass: restore any previously amber-selected edge, then amber the new one
       const prevSelectedEdgeId = get().selectedEdgeId;
       const updatedEdgesHL = layoutedEdges.map((e) => {
@@ -898,6 +970,32 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       const totalTimeValue = finalOverrides?.totalTime || (selectedEdge?.data?.Tooltip_Total_Time as string);
       if (totalTimeValue) dataToShow.push({ label: "زمان کل", value: totalTimeValue });
 
+      const isPathMode = !!finalOverrides;
+      const minTime = finalOverrides?.minTime !== undefined ? finalOverrides.minTime : (isPathMode ? undefined : selectedEdge?.data?.Min_Duration_Seconds);
+      if (typeof minTime === "number" && minTime >= 0) {
+        dataToShow.push({ label: "حداقل زمان", value: formatDuration(minTime) });
+      }
+
+      const maxTime = finalOverrides?.maxTime !== undefined ? finalOverrides.maxTime : (isPathMode ? undefined : selectedEdge?.data?.Max_Duration_Seconds);
+      if (typeof maxTime === "number") {
+        dataToShow.push({ label: "حداکثر زمان", value: formatDuration(maxTime) });
+      }
+
+      const medianTime = finalOverrides?.medianTime !== undefined ? finalOverrides.medianTime : (isPathMode ? undefined : selectedEdge?.data?.Median_Duration_Seconds);
+      if (typeof medianTime === "number") {
+        dataToShow.push({ label: "میانه زمان", value: formatDuration(medianTime) });
+      }
+
+      const stdTime = finalOverrides?.stdTime !== undefined ? finalOverrides.stdTime : (isPathMode ? undefined : selectedEdge?.data?.Std_Duration_Seconds);
+      if (typeof stdTime === "number") {
+        dataToShow.push({ label: "انحراف معیار", value: formatDuration(stdTime) });
+      }
+
+      const prob = selectedEdge?.data?.Branching_Probability;
+      if (typeof prob === "number") {
+        dataToShow.push({ label: "احتمال انشعاب", value: `${prob.toLocaleString("fa-IR")}٪` });
+      }
+
       const sourceId = selectedEdge?.source || edgeId.split("->")[0];
       const targetId = selectedEdge?.target || edgeId.split("->")[1];
 
@@ -951,11 +1049,13 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         return "N/A";
       };
 
+
       const outgoingTooltipData = outgoingEdges.map((edge) => ({
         label: getNodeLabel(edge.target),
         weight: getEdgeLabel(edge),
         edgeId: edge.id,
         direction: "outgoing" as const,
+        caseCount: (edge.data as any)?.Case_Count || 0,
       }));
 
       const incomingTooltipData = incomingEdges.map((edge) => ({
@@ -963,6 +1063,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         weight: getEdgeLabel(edge),
         edgeId: edge.id,
         direction: "incoming" as const,
+        caseCount: (edge.data as any)?.Case_Count || 0,
       }));
 
       // Update node selection

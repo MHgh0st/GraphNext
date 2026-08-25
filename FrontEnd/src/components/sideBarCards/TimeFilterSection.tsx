@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { NumberInput } from "@heroui/number-input";
+
 interface TimeFilterSectionProps {
   title: string;
   setTime: (value: number | null) => void;
@@ -9,30 +10,26 @@ export default function TimeFilterSection({
   title,
   setTime,
 }: TimeFilterSectionProps) {
-  const [hour, setHour] = useState<number | null>(null);
-  const [day, setDay] = useState<number | null>(null);
-  const [week, setWeek] = useState<number | null>(null);
-  const changeDate = (
-    e: number | React.ChangeEvent<HTMLInputElement>,
-    setFn: (value: number) => void
-  ) => {
-    const value =
-      typeof e === "number" ? e : parseInt(e.target.value || "0", 10);
-
-    setFn(value);
-  };
+  const [hour, setHour] = useState<number | undefined>(undefined);
+  const [day, setDay] = useState<number | undefined>(undefined);
+  const [week, setWeek] = useState<number | undefined>(undefined);
 
   useEffect(() => {
-    if (week !== null || day !== null || hour !== null) {
+    const hasWeek = week !== undefined && !isNaN(week);
+    const hasDay = day !== undefined && !isNaN(day);
+    const hasHour = hour !== undefined && !isNaN(hour);
+
+    if (hasWeek || hasDay || hasHour) {
       const total =
-        (week ?? 0) * 7 * 24 * 3600 +
-        (day ?? 0) * 24 * 3600 +
-        (hour ?? 0) * 3600;
+        (hasWeek ? week : 0) * 7 * 24 * 3600 +
+        (hasDay ? day : 0) * 24 * 3600 +
+        (hasHour ? hour : 0) * 3600;
       setTime(total);
     } else {
       setTime(null);
     }
-  }, [week, day, hour]);
+  }, [week, day, hour, setTime]);
+
   return (
     <div dir="rtl">
       <p className="mb-2 font-medium text-right">{title}</p>
@@ -40,14 +37,14 @@ export default function TimeFilterSection({
         <NumberInput
           size="sm"
           placeholder="هفته"
-          onChange={(value) => changeDate(value, setWeek)}
+          onValueChange={setWeek}
           value={week}
           minValue={0}
         />
         <NumberInput
           size="sm"
           placeholder="روز"
-          onChange={(value) => changeDate(value, setDay)}
+          onValueChange={setDay}
           value={day}
           minValue={0}
           maxValue={6}
@@ -56,7 +53,7 @@ export default function TimeFilterSection({
           size="sm"
           placeholder="ساعت"
           value={hour}
-          onChange={(value) => changeDate(value, setHour)}
+          onValueChange={setHour}
           minValue={0}
           maxValue={23}
         />
